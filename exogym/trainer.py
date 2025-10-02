@@ -6,6 +6,7 @@ from exogym.train_node import TrainNode
 from exogym.strategy import Strategy
 from exogym.common import TrainConfig
 from exogym.aux.utils import print_dataset_size, _average_model_states
+from exogym.aux.comm_track import patch_collectives, comm_bytes
 from exogym.minibatch_probe import find_minibatch_size_isolated
 from exogym.utils import init_process_group_portsafe
 
@@ -65,6 +66,7 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
     This function is importable as exogym.trainer._worker, making it notebook-safe.
     """
     config.rank = rank    
+    patch_collectives()
 
     _build_connection(config)
 
@@ -74,14 +76,17 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
     config.strategy._init_node(config.model, config.rank, config.num_nodes)
 
     train_node = TrainNode(config=config)
-    final_model_state = train_node.train()
+    final_model_state, metric = train_node.train()
 
     # Move tensors to CPU and detach to avoid CUDA serialization issues
     cpu_state_dict = OrderedDict()
     for key, tensor in final_model_state.items():
         cpu_state_dict[key] = tensor.detach().cpu()
 
-    result_queue.put((rank, cpu_state_dict))
+    bytes_total, bytes_by_op = comm_bytes()
+    result_queue.put(
+        (rank, cpu_state_dict, metric, {"bytes": bytes_total, "by_op": bytes_by_op})
+    )
 
     dist.destroy_process_group()
 
@@ -187,16 +192,52 @@ class Trainer:
             join=True,
         )
 
-        model_states = {}
+        model_states, metrics_list, comm = {}, [], []
+        prof_agg = defaultdict(lambda: {"count": 0, "bytes": 0})
         for _ in range(self.config.num_nodes):
-            rank, state_dict = result_queue.get()
+            rank, state_dict, m, c = result_queue.get()
             model_states[rank] = state_dict
+            metrics_list.append(m)
+            comm.append(c)
+            # aggregate profiler comm rows
+            for op, count, est_bytes in m.get("profiler_comm", []):
+                prof_agg[op]["count"] += count
+                if est_bytes is not None:
+                    prof_agg[op]["bytes"] += est_bytes
 
         averaged_state_dict = _average_model_states(model_states)
 
         final_model = copy.deepcopy(self.model_orig)
         final_model.load_state_dict(averaged_state_dict)
-        return final_model
+
+        total_tokens = sum(m["tokens"] for m in metrics_list)
+        total_token_loss = sum(m["token_loss"] for m in metrics_list)
+        wall = max(m["elapsed"] for m in metrics_list)  # parallel wall time
+        total_token_loss = sum(m["token_loss"] for m in metrics_list)
+        # convert defaultdict back to plain dict
+        profiler_comm_agg = {
+            op: {"count": v["count"], "bytes": v["bytes"]} for op, v in prof_agg.items()
+        }
+
+        loss_per_token = total_token_loss / max(1, total_tokens)
+        tokens_per_sec = total_tokens / max(1e-9, wall)
+
+        total_comm_bytes = sum(c["bytes"] for c in comm)
+        by_op_agg = {}
+        for c in comm:
+            for k, v in c["by_op"].items():
+                by_op_agg[k] = by_op_agg.get(k, 0) + v
+
+        # include in returned metrics
+        metrics_out = {
+            "loss_per_token": loss_per_token,
+            "tokens_per_sec": tokens_per_sec,
+            "comm_profiler_agg": profiler_comm_agg,
+            "comm_bytes_total": total_comm_bytes,
+            "comm_bytes_by_op": by_op_agg,
+        }
+
+        return final_model, metrics_out
 
     def clear_minibatch_cache(self):
         """Clear the cached minibatch size results."""
@@ -222,4 +263,4 @@ class Trainer:
         )
         
         self._minibatch_cache[cache_key] = minibatch_size
-        return minibatch_size 
+        return minibatch_size

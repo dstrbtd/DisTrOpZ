@@ -1,5 +1,7 @@
+import time
 import torch
 import torch.distributed as dist
+from torch.profiler import profile, ProfilerActivity
 from torch.utils.data import DataLoader
 import numpy as np
 
@@ -78,6 +80,10 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
 
         # Attempt to load checkpoint before starting training
         # self._load_checkpoint()
+
+        # Setup evaluation metrics
+        self.total_tokens = 0
+        self.total_loss = 0.0
 
     def build_dataloaders(self):
         """
@@ -225,69 +231,100 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
 
 
     def train(self):
-        if self.max_steps is None:
-            self.max_steps = (
-                self.num_epochs
-                * len(self.train_dataloader)
-                / (self.batch_size // self.minibatch_size)
-            )
-
-        self.strategy.max_steps = self.max_steps
-
-        if self.rank == 0:
-            if self.kwargs.get("disable_logging", False):
-                # Use base Logger for no-op logging during profiling
-                self.logger = Logger(
-                    model=self.model,
-                    max_steps=self.max_steps,
-                    strategy=self.strategy,
-                    train_node=self,
-                    init_tqdm=False,
-                )
-            elif self.kwargs.get("wandb_project", None) is not None:
-                self.logger = WandbLogger(
-                    model=self.model,
-                    max_steps=self.max_steps,
-                    strategy=self.strategy,
-                    train_node=self,
-                    wandb_project=self.kwargs.get("wandb_project", None),
-                    run_name=self.kwargs.get("run_name", None),
-                    x_axis=self.kwargs.get("log_x_axis", "step"),
-                )
-            else:
-                self.logger = CSVLogger(
-                    model=self.model,
-                    max_steps=self.max_steps,
-                    strategy=self.strategy,
-                    train_node=self,
-                    run_name=self.kwargs.get("run_name", None),
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True
+        ) as prof:
+            start_time = time.time()
+            if self.max_steps is None:
+                self.max_steps = (
+                    self.num_epochs
+                    * len(self.train_dataloader)
+                    / (self.batch_size // self.minibatch_size)
                 )
 
-        while self.local_step < self.max_steps:
-            if self.local_step % self.val_interval == 0:
-                self._evaluate()
+            self.strategy.max_steps = self.max_steps
 
-            self._train_step()
-
-            self.local_step += 1
             if self.rank == 0:
-                self.logger.increment_step()
+                if self.kwargs.get("disable_logging", False):
+                    # Use base Logger for no-op logging during profiling
+                    self.logger = Logger(
+                        model=self.model,
+                        max_steps=self.max_steps,
+                        strategy=self.strategy,
+                        train_node=self,
+                        init_tqdm=False,
+                    )
+                elif self.kwargs.get("wandb_project", None) is not None:
+                    self.logger = WandbLogger(
+                        model=self.model,
+                        max_steps=self.max_steps,
+                        strategy=self.strategy,
+                        train_node=self,
+                        wandb_project=self.kwargs.get("wandb_project", None),
+                        run_name=self.kwargs.get("run_name", None),
+                        x_axis=self.kwargs.get("log_x_axis", "step"),
+                    )
+                else:
+                    self.logger = CSVLogger(
+                        model=self.model,
+                        max_steps=self.max_steps,
+                        strategy=self.strategy,
+                        train_node=self,
+                        run_name=self.kwargs.get("run_name", None),
+                    )
 
-            # Calculate correlation if interval is set and it's time
-            if self.config.correlation_interval and self.local_step > 0 and self.local_step % self.config.correlation_interval == 0:
-                correlation_value = self._correlation_calculation()
+            while self.local_step < self.max_steps:
+                if self.local_step % self.val_interval == 0:
+                    self._evaluate()
+
+                self._train_step()
+
+                self.local_step += 1
                 if self.rank == 0:
-                    self.logger.log_info(correlation_value, 'correlation')
+                    self.logger.increment_step()
 
-            dist.barrier()
+                # Calculate correlation if interval is set and it's time
+                if self.config.correlation_interval and self.local_step > 0 and self.local_step % self.config.correlation_interval == 0:
+                    correlation_value = self._correlation_calculation()
+                    if self.rank == 0:
+                        self.logger.log_info(correlation_value, 'correlation')
 
-        self._evaluate()
+                dist.barrier()
+
+            self._evaluate()
 
         # if self.config.checkpoint_interval is not None:
         #     self._save_checkpoint()
 
+        elapsed = time.time() - start_time
+
+        # summarize comm-ish ops (names vary by backend/build)
+        comm_rows = []
+        for evt in prof.key_averages():
+            key = evt.key.lower()
+            if any(
+                x in key
+                for x in ["all_reduce", "all_gather", "reduce_scatter", "broadcast"]
+            ):
+                # best-effort byte estimate from first input shape
+                shp = evt.input_shapes[0] if evt.input_shapes else None
+                est_bytes = None
+                if shp and len(shp) > 0:
+                    # assume float32 unless you can inspect actual dtype
+                    # (you can pass dtype size via wrapper if you want higher fidelity)
+                    numel = 1
+                    for d in shp:
+                        numel *= d if isinstance(d, int) else 1
+                    est_bytes = numel * 4
+                comm_rows.append((evt.key, evt.count, est_bytes))
+
         # Return the final model state dict
-        return self.model.state_dict()
+        return self.model.state_dict(), {
+            "tokens": self.total_tokens,
+            "token_loss": self.total_loss,  # summed loss *per token* (numerator)
+            "elapsed": elapsed,
+            "profiler_comm": comm_rows,  # per-op counts + rough bytes
+        }
 
     def __config__(self):
         remove_keys = ["model", "train_dataloader", "val_dataloader", "strategy"]
