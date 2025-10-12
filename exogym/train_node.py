@@ -1,7 +1,7 @@
 import time
 import torch
 import torch.distributed as dist
-from torch.profiler import profile, ProfilerActivity
+from torch.profiler import profile, ProfilerActivity, schedule, tensorboard_trace_handler
 from torch.utils.data import DataLoader
 import numpy as np
 
@@ -131,7 +131,15 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
 
         return batch
 
+
     def _train_step(self):
+        def _tokens_in(minibatch):
+            if isinstance(minibatch, (list, tuple)): x = minibatch[0]
+            elif isinstance(minibatch, dict):
+                x = minibatch.get("input_ids") or minibatch.get("tokens") or next(iter(minibatch.values()))
+            else: x = minibatch
+            return x.numel()
+
         self.strategy.zero_grad()
 
         grad_accumulation_steps = self.batch_size // self.minibatch_size
@@ -146,6 +154,10 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
                     loss = self.model(minibatch)
             else:
                 loss = self.model(minibatch)
+
+            tokens = _tokens_in(minibatch)
+            self.total_tokens += tokens
+            self.total_loss += loss.item() * tokens
 
             loss.backward()
 
@@ -231,72 +243,87 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
 
 
     def train(self):
-        with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True
-        ) as prof:
-            start_time = time.time()
-            if self.max_steps is None:
-                self.max_steps = (
-                    self.num_epochs
-                    * len(self.train_dataloader)
-                    / (self.batch_size // self.minibatch_size)
+        enable_prof = self.kwargs.get("enable_profiler", True)  # or False by default
+        prof = None
+        if enable_prof:
+            prof = profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                schedule=schedule(wait=2, warmup=3, active=5, repeat=1),
+                on_trace_ready=tensorboard_trace_handler(self.kwargs.get("prof_dir", "./traces")),
+                record_shapes=False, profile_memory=False, with_stack=False,
+            )
+            prof.__enter__()
+
+        start_time = time.time()
+
+        if self.max_steps is None:
+            self.max_steps = (
+                self.num_epochs
+                * len(self.train_dataloader)
+                / (self.batch_size // self.minibatch_size)
+            )
+
+        self.strategy.max_steps = self.max_steps
+
+        if self.rank == 0:
+            if self.kwargs.get("disable_logging", False):
+                # Use base Logger for no-op logging during profiling
+                self.logger = Logger(
+                    model=self.model,
+                    max_steps=self.max_steps,
+                    strategy=self.strategy,
+                    train_node=self,
+                    init_tqdm=False,
+                )
+            elif self.kwargs.get("wandb_project", None) is not None:
+                self.logger = WandbLogger(
+                    model=self.model,
+                    max_steps=self.max_steps,
+                    strategy=self.strategy,
+                    train_node=self,
+                    wandb_project=self.kwargs.get("wandb_project", None),
+                    run_name=self.kwargs.get("run_name", None),
+                    x_axis=self.kwargs.get("log_x_axis", "step"),
+                )
+            else:
+                self.logger = CSVLogger(
+                    model=self.model,
+                    max_steps=self.max_steps,
+                    strategy=self.strategy,
+                    train_node=self,
+                    run_name=self.kwargs.get("run_name", None),
                 )
 
-            self.strategy.max_steps = self.max_steps
+        while self.local_step < self.max_steps:
+            if self.local_step % self.val_interval == 0:
+                self._evaluate()
 
+            self._train_step()
+
+            if prof is not None: prof.step()
+
+            self.local_step += 1
             if self.rank == 0:
-                if self.kwargs.get("disable_logging", False):
-                    # Use base Logger for no-op logging during profiling
-                    self.logger = Logger(
-                        model=self.model,
-                        max_steps=self.max_steps,
-                        strategy=self.strategy,
-                        train_node=self,
-                        init_tqdm=False,
-                    )
-                elif self.kwargs.get("wandb_project", None) is not None:
-                    self.logger = WandbLogger(
-                        model=self.model,
-                        max_steps=self.max_steps,
-                        strategy=self.strategy,
-                        train_node=self,
-                        wandb_project=self.kwargs.get("wandb_project", None),
-                        run_name=self.kwargs.get("run_name", None),
-                        x_axis=self.kwargs.get("log_x_axis", "step"),
-                    )
-                else:
-                    self.logger = CSVLogger(
-                        model=self.model,
-                        max_steps=self.max_steps,
-                        strategy=self.strategy,
-                        train_node=self,
-                        run_name=self.kwargs.get("run_name", None),
-                    )
+                self.logger.increment_step()
 
-            while self.local_step < self.max_steps:
-                if self.local_step % self.val_interval == 0:
-                    self._evaluate()
-
-                self._train_step()
-
-                self.local_step += 1
+            # Calculate correlation if interval is set and it's time
+            if self.config.correlation_interval and self.local_step > 0 and self.local_step % self.config.correlation_interval == 0:
+                correlation_value = self._correlation_calculation()
                 if self.rank == 0:
-                    self.logger.increment_step()
+                    self.logger.log_info(correlation_value, 'correlation')
 
-                # Calculate correlation if interval is set and it's time
-                if self.config.correlation_interval and self.local_step > 0 and self.local_step % self.config.correlation_interval == 0:
-                    correlation_value = self._correlation_calculation()
-                    if self.rank == 0:
-                        self.logger.log_info(correlation_value, 'correlation')
+            dist.barrier()
 
-                dist.barrier()
+        self._evaluate()
 
-            self._evaluate()
+        elapsed = time.time() - start_time
+
+        if enable_prof:
+            # prof.__exit__(None, None, None)
+            prof.stop()
 
         # if self.config.checkpoint_interval is not None:
         #     self._save_checkpoint()
-
-        elapsed = time.time() - start_time
 
         # summarize comm-ish ops (names vary by backend/build)
         comm_rows = []

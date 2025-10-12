@@ -14,8 +14,7 @@ import os
 import copy
 from dataclasses import dataclass
 from typing import Optional, List, Any, Dict, Union, Callable
-from collections import OrderedDict
-
+from collections import OrderedDict, defaultdict
 
 def _build_connection(config: TrainConfig):
     """
@@ -65,30 +64,35 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
     Entry point executed in every child process.
     This function is importable as exogym.trainer._worker, making it notebook-safe.
     """
-    config.rank = rank    
-    patch_collectives()
+    try:
+        config.rank = rank
+        patch_collectives()
 
-    _build_connection(config)
+        _build_connection(config)
 
-    # TODO: Should these happen here or in TrainNode.__init__() ?
-    config.model = copy.deepcopy(config.model).to(config.device)
-    config.strategy = copy.deepcopy(config.strategy)
-    config.strategy._init_node(config.model, config.rank, config.num_nodes)
+        # TODO: Should these happen here or in TrainNode.__init__() ?
+        config.model = copy.deepcopy(config.model).to(config.device)
+        config.strategy = copy.deepcopy(config.strategy)
+        config.strategy._init_node(config.model, config.rank, config.num_nodes)
 
-    train_node = TrainNode(config=config)
-    final_model_state, metric = train_node.train()
+        train_node = TrainNode(config=config)
+        final_model_state, metric = train_node.train()
 
-    # Move tensors to CPU and detach to avoid CUDA serialization issues
-    cpu_state_dict = OrderedDict()
-    for key, tensor in final_model_state.items():
-        cpu_state_dict[key] = tensor.detach().cpu()
+        # Move tensors to CPU and detach to avoid CUDA serialization issues
+        cpu_state_dict = OrderedDict()
+        for key, tensor in final_model_state.items():
+            cpu_state_dict[key] = tensor.detach().cpu()
 
-    bytes_total, bytes_by_op = comm_bytes()
-    result_queue.put(
-        (rank, cpu_state_dict, metric, {"bytes": bytes_total, "by_op": bytes_by_op})
-    )
+        bytes_total, bytes_by_op = comm_bytes()
+        result_queue.put(
+            (rank, cpu_state_dict, metric, {"bytes": bytes_total, "by_op": bytes_by_op})
+        )
 
-    dist.destroy_process_group()
+        dist.destroy_process_group()
+    finally:
+        # Always run, even on exceptions
+        if dist.is_initialized():
+            dist.destroy_process_group()
 
 class Trainer:
     """

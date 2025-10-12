@@ -50,5 +50,5 @@ Repository = "https://github.com/exo-explore/exogym"
 Issues = "https://github.com/exo-explore/exogym/issues"
 
 [tool.setuptools.packages.find]
-include = ["exogym*"]
+include = ["exogym*", "miner*", "validator*"]
 exclude = ["tests*"] 
