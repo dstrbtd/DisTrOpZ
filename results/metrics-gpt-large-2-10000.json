@@ -1,0 +1,72 @@
+{
+    "<miner.miner_diloco.DiLoCoStrategy object at 0x7f2089d53df0>": {
+        "loss_per_token": 6.7079120850145815,
+        "tokens_per_sec": 4290.250658312822,
+        "comm_profiler_agg": {
+            "nccl:all_reduce_barrier": {
+                "count": 20,
+                "bytes": 0
+            },
+            "nccl:all_reduce": {
+                "count": 1744,
+                "bytes": 0
+            },
+            "c10d::broadcast_": {
+                "count": 872,
+                "bytes": 0
+            },
+            "nccl:broadcast": {
+                "count": 1744,
+                "bytes": 0
+            },
+            "ncclDevKernel_Broadcast_RING_LL(ncclDevKernelArgsStorage<4096ul>)": {
+                "count": 872,
+                "bytes": 0
+            }
+        },
+        "comm_bytes_total": 30963609608008,
+        "comm_bytes_by_op": {
+            "broadcast": 12385443848008,
+            "all_reduce": 18578165760000
+        }
+    },
+    "<miner.miner_demo.DeMoStrategy object at 0x7f2089d53220>": {
+        "loss_per_token": 4.074009516325593,
+        "tokens_per_sec": 4741.980675890671,
+        "comm_profiler_agg": {
+            "nccl:all_reduce_barrier": {
+                "count": 20,
+                "bytes": 0
+            },
+            "nccl:all_gather": {
+                "count": 17440,
+                "bytes": 0
+            }
+        },
+        "comm_bytes_total": 7727590571848,
+        "comm_bytes_by_op": {
+            "broadcast": 6192729928,
+            "all_reduce": 6198914641920,
+            "all_gather": 1522483200000
+        }
+    },
+    "<miner.miner_federated_averaging.FedAvgStrategy object at 0x7f2089d84880>": {
+        "loss_per_token": 6.715674410390854,
+        "tokens_per_sec": 4985.186800249611,
+        "comm_profiler_agg": {
+            "nccl:all_reduce_barrier": {
+                "count": 20,
+                "bytes": 0
+            },
+            "nccl:all_reduce": {
+                "count": 8720,
+                "bytes": 0
+            }
+        },
+        "comm_bytes_total": 68126133849928,
+        "comm_bytes_by_op": {
+            "broadcast": 6192729928,
+            "all_reduce": 68119941120000
+        }
+    }
+}

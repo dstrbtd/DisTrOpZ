@@ -10,20 +10,20 @@ from exogym.trainer import Trainer
 
 NUM_NODES = 2
 DEVICE = "cuda"
-MAX_STEPS = 2
+MAX_STEPS = 10000
 MODEL_SIZE = "large"
 
 def main():
     # Get datasets - this will take a while the first time, as the dataset has to be imported and processed.
     train_dataset, vocab_size = get_dataset(
-        "shakespeare",
+        "owt",
         block_size=1024,
         device="cpu",
         start_pc=0.0,
         end_pc=0.005 * NUM_NODES,
     )
     val_dataset, vocab_size = get_dataset(
-        "shakespeare", block_size=1024, device="cpu", start_pc=0.99, end_pc=1.0
+        "owt", block_size=1024, device="cpu", start_pc=0.99, end_pc=1.0
     )
 
     # Create model
@@ -61,7 +61,7 @@ def main():
         )
         metrics[str(strategy)] = metrics_out
         
-        with open(f"results/metrics-gpt{MODEL_SIZE}-{NUM_NODES}-{MAX_STEPS}.json", 'w') as json_file:
+        with open(f"results/metrics-gpt-{MODEL_SIZE}-{NUM_NODES}-{MAX_STEPS}.json", 'w') as json_file:
             json.dump(metrics, json_file, indent=4)
 
 if __name__ == "__main__":

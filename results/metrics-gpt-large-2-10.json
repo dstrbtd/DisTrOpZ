@@ -1,0 +1,134 @@
+{
+    "<miner.miner_diloco.DiLoCoStrategy object at 0x7f93d835fcd0>": {
+        "loss_per_token": 10.17423319220543,
+        "tokens_per_sec": 2790.5429234708254,
+        "comm_profiler_agg": {
+            "nccl:all_reduce_barrier": {
+                "count": 20,
+                "bytes": 0
+            },
+            "nccl:all_reduce": {
+                "count": 1744,
+                "bytes": 0
+            },
+            "c10d::broadcast_": {
+                "count": 872,
+                "bytes": 0
+            },
+            "nccl:broadcast": {
+                "count": 1744,
+                "bytes": 0
+            },
+            "ncclDevKernel_Broadcast_RING_LL(ncclDevKernelArgsStorage<4096ul>)": {
+                "count": 872,
+                "bytes": 0
+            }
+        },
+        "comm_bytes_total": 30963609616,
+        "comm_bytes_by_op": {
+            "broadcast": 12385443856,
+            "all_reduce": 18578165760
+        }
+    },
+    "<miner.miner_demo.DeMoStrategy object at 0x7f93d835f1c0>": {
+        "loss_per_token": 10.049548363685608,
+        "tokens_per_sec": 2849.012103312688,
+        "comm_profiler_agg": {
+            "nccl:all_reduce_barrier": {
+                "count": 20,
+                "bytes": 0
+            },
+            "nccl:all_gather": {
+                "count": 17440,
+                "bytes": 0
+            }
+        },
+        "comm_bytes_total": 20100648976,
+        "comm_bytes_by_op": {
+            "broadcast": 6192721936,
+            "all_reduce": 12385443840,
+            "all_gather": 1522483200
+        }
+    },
+    "<miner.miner_federated_averaging.FedAvgStrategy object at 0x7f93d8394820>": {
+        "loss_per_token": 9.960823172330857,
+        "tokens_per_sec": 3220.008554280331,
+        "comm_profiler_agg": {
+            "nccl:all_reduce_barrier": {
+                "count": 20,
+                "bytes": 0
+            },
+            "nccl:all_reduce": {
+                "count": 8720,
+                "bytes": 0
+            }
+        },
+        "comm_bytes_total": 74312663056,
+        "comm_bytes_by_op": {
+            "broadcast": 6192721936,
+            "all_reduce": 68119941120
+        }
+    },
+    "<miner.miner_sparta_diloco.SPARTAStrategy object at 0x7f93d8395810>": {
+        "loss_per_token": 10.20813283920288,
+        "tokens_per_sec": 2968.585283729833,
+        "comm_profiler_agg": {
+            "nccl:all_reduce_barrier": {
+                "count": 20,
+                "bytes": 0
+            },
+            "c10d::broadcast_": {
+                "count": 4360,
+                "bytes": 0
+            },
+            "nccl:broadcast": {
+                "count": 8720,
+                "bytes": 0
+            },
+            "ncclDevKernel_Broadcast_RING_LL(ncclDevKernelArgsStorage<4096ul>)": {
+                "count": 4360,
+                "bytes": 0
+            },
+            "nccl:all_reduce": {
+                "count": 8714,
+                "bytes": 0
+            }
+        },
+        "comm_bytes_total": 34369603208,
+        "comm_bytes_by_op": {
+            "broadcast": 21674526736,
+            "all_reduce": 12695076472
+        }
+    },
+    "<miner.miner_sparta.SPARTAStrategy object at 0x7f93d83975b0>": {
+        "loss_per_token": 10.205022192001342,
+        "tokens_per_sec": 2774.2642500664074,
+        "comm_profiler_agg": {
+            "nccl:all_reduce_barrier": {
+                "count": 20,
+                "bytes": 0
+            },
+            "c10d::broadcast_": {
+                "count": 4360,
+                "bytes": 0
+            },
+            "nccl:broadcast": {
+                "count": 8720,
+                "bytes": 0
+            },
+            "ncclDevKernel_Broadcast_RING_LL(ncclDevKernelArgsStorage<4096ul>)": {
+                "count": 4360,
+                "bytes": 0
+            },
+            "nccl:all_reduce": {
+                "count": 8714,
+                "bytes": 0
+            }
+        },
+        "comm_bytes_total": 34369603208,
+        "comm_bytes_by_op": {
+            "broadcast": 21674526736,
+            "all_reduce": 12695076472
+        }
+    }
+}
