@@ -80,14 +80,14 @@ def main():
 
     # Load dataset once
     train_dataset, vocab_size = get_dataset(
-        "owt",
+        "shakespeare",
         block_size=1024,
         device="cpu",
         start_pc=0.0,
         end_pc=0.005 * config.number_of_nodes,
     )
     val_dataset, vocab_size = get_dataset(
-        "owt", block_size=1024, device="cpu", start_pc=0.99, end_pc=1.0
+        "shakespeare", block_size=1024, device="cpu", start_pc=0.99, end_pc=1.0
     )
 
     metrics = {}
