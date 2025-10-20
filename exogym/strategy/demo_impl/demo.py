@@ -141,7 +141,6 @@ class DeMo(torch.optim.SGD):
 
     @torch.no_grad()
     def step(self, closure: Callable | None = None):
-
         self.data_transmit = 0
         self.data_receive = 0
 
@@ -232,8 +231,12 @@ class TransformDCT:
                     # Pregenerate DCT basis matrices
                     if sc not in self.f_dict:
                         identity = torch.eye(sc)
-                        self.f_dict[sc] = _dct(identity, norm=norm).to(p.dtype).to(p.device)
-                        self.b_dict[sc] = _idct(identity, norm=norm).to(p.dtype).to(p.device)
+                        self.f_dict[sc] = (
+                            _dct(identity, norm=norm).to(p.dtype).to(p.device)
+                        )
+                        self.b_dict[sc] = (
+                            _idct(identity, norm=norm).to(p.dtype).to(p.device)
+                        )
 
     @torch.no_grad()
     def einsum_2d(self, x, b, d=None):
@@ -253,7 +256,6 @@ class TransformDCT:
 
     @torch.no_grad()
     def encode(self, x):
-
         if len(x.shape) > 1:  # 2D weights
             n1 = self.shape_dict[x.shape[0]]
             n2 = self.shape_dict[x.shape[1]]
@@ -279,7 +281,6 @@ class TransformDCT:
 
     @torch.no_grad()
     def decode(self, x):
-
         if len(x.shape) > 2:  # 2D weights
             n1 = x.shape[2]
             n2 = x.shape[3]
@@ -316,7 +317,6 @@ class CompressDCT:
 
     @torch.no_grad()
     def compress(self, x, topk):
-
         xshape = x.shape
         if len(x.shape) > 2:  # 2D weights
             x = rearrange(x, "y x h w -> y x (h w)")
@@ -332,7 +332,6 @@ class CompressDCT:
 
     @torch.no_grad()
     def decompress(self, p, idx, val, xshape, totalk):
-
         x = torch.zeros(xshape, device=p.device, dtype=p.dtype)
 
         if len(xshape) > 2:  # 2D weights

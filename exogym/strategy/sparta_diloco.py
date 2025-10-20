@@ -27,25 +27,20 @@ class SPARTADiLoCoStrategy(CommunicateOptimizeStrategy):
         **kwargs,
     ):
         # Ensure optim_spec is properly initialized
-        optim_spec = ensure_optim_spec(
-            inner_optim_spec, OptimSpec(torch.optim.AdamW)
-        )
+        optim_spec = ensure_optim_spec(inner_optim_spec, OptimSpec(torch.optim.AdamW))
 
         # Create both communication modules
         index_selector = RandomIndexSelector(p_sparta)
         self.sparse_comm = SparseCommunicator(index_selector)
         self.diloco_comm = DiLoCoCommunicator(H=H, outer_optim_spec=outer_optim_spec)
-        
+
         # Store timing parameters
         self.sparta_interval = sparta_interval
         self.H = H
 
         super().__init__(
             optim_spec=optim_spec,
-            communication_modules=[
-                self.sparse_comm,
-                self.diloco_comm
-            ],
+            communication_modules=[self.sparse_comm, self.diloco_comm],
             **kwargs,
         )
 

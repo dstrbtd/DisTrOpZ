@@ -11,6 +11,7 @@ from .communicate_optimize_strategy import (
 from .optim import OptimSpec
 from .communicate import all_reduce, broadcast
 
+
 class SparseCommunicator(CommunicationModule):
     """
     Communication module for sparse parameter communication (like SPARTA).
@@ -54,7 +55,6 @@ class SPARTAStrategy(CommunicateOptimizeStrategy):
         p_sparta=0.005,
         **kwargs,
     ):
-
         # Create index selector and sparse communicator
         index_selector = RandomIndexSelector(p_sparta)
         sparse_comm = SparseCommunicator(index_selector)

@@ -3,6 +3,7 @@ from typing import Dict, Any, Union, List, Optional, Callable
 import torch
 from exogym.strategy import Strategy
 
+
 @dataclass
 class TrainConfig:
     """Configuration class that holds all training parameters for serialization."""
@@ -22,7 +23,7 @@ class TrainConfig:
     devices: Optional[List[int]] = None
     port: int = 12355
 
-    num_epochs: int = 1 
+    num_epochs: int = 1
     max_steps: Optional[int] = None
     batch_size: int = 16
     minibatch_size: int = 16

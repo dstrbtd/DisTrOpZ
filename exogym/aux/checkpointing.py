@@ -3,7 +3,8 @@ import torch
 import zipfile
 
 # TODO: Fix.
-# How are we going to do config? 
+# How are we going to do config?
+
 
 class CheckpointMixin:
     def _save_checkpoint(self):
@@ -54,7 +55,6 @@ class CheckpointMixin:
                     pass
             raise e
 
-
     def _load_checkpoint(self):
         save_path_dir = os.path.join(
             self.config.save_dir,
@@ -65,7 +65,7 @@ class CheckpointMixin:
 
         # Use fixed filename for single checkpoint
         checkpoint_path = os.path.join(save_path_dir, "checkpoint.pt")
-        
+
         if not os.path.exists(checkpoint_path):
             print(
                 f"Rank {self.rank}: No checkpoint found at {checkpoint_path}. Starting from scratch."
@@ -73,9 +73,7 @@ class CheckpointMixin:
             return False
 
         try:
-            print(
-                f"Rank {self.rank}: Loading checkpoint from {checkpoint_path}"
-            )
+            print(f"Rank {self.rank}: Loading checkpoint from {checkpoint_path}")
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
 
             self.model.load_state_dict(checkpoint["model_state_dict"])
@@ -137,7 +135,7 @@ class CheckpointMixin:
                 f"Rank {self.rank}: Successfully loaded checkpoint. Resuming at epoch {self.epoch}, step {self.local_step}."
             )
             return True
-            
+
         except Exception as e:
             print(
                 f"Rank {self.rank}: Failed to load checkpoint from {checkpoint_path}: {e}. Starting from scratch."

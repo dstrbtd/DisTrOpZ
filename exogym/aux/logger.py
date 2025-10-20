@@ -12,31 +12,39 @@ from typing import Literal
 
 
 class Logger:
-    def __init__(self, model: nn.Module, max_steps: int, strategy=None, train_node=None, extra_config=None, init_tqdm=True):
+    def __init__(
+        self,
+        model: nn.Module,
+        max_steps: int,
+        strategy=None,
+        train_node=None,
+        extra_config=None,
+        init_tqdm=True,
+    ):
         self.model = model
         self.max_steps = max_steps
-        
+
         # Create configuration once in parent class
         self.config = create_config(
             model=model,
             strategy=strategy,
             train_node=train_node,
-            extra_config=extra_config or {}
+            extra_config=extra_config or {},
         )
         # Add max_steps to config if not already there
-        if 'max_steps' not in self.config:
-            self.config['max_steps'] = max_steps
+        if "max_steps" not in self.config:
+            self.config["max_steps"] = max_steps
 
         self.step = 0
         self.current_lr = 0
         self.examples_trained = 0
-        
+
         # Initialize tqdm if requested (can be delayed by child classes)
         if init_tqdm:
             self.pbar = tqdm(total=self.max_steps, initial=0)
         else:
             self.pbar = None
-    
+
     def init_tqdm(self):
         """Initialize tqdm progress bar - can be called by child classes after their setup"""
         if self.pbar is None:
@@ -49,7 +57,7 @@ class Logger:
     def log_loss(self, loss: float, name: str):
         """Log validation/evaluation loss - no-op in base logger"""
         pass
-    
+
     def log_info(self, value: float, name: str):
         """Log informational metric - no-op in base logger"""
         pass
@@ -69,7 +77,7 @@ class Logger:
 
     def increment_step(self):
         self.step += 1
-    
+
     def set_step(self, step: int):
         """Set the current step - used for checkpoint resumption"""
         self.step = step
@@ -91,9 +99,8 @@ class WandbLogger(Logger):
         train_node=None,
         wandb_project: str = None,
         run_name: str = None,
-        x_axis: Literal['step', 'examples'] = 'step',
+        x_axis: Literal["step", "examples"] = "step",
     ):
-
         try:
             import wandb
         except ImportError:
@@ -106,7 +113,9 @@ class WandbLogger(Logger):
             "wandb_project": wandb_project,
             "x_axis": x_axis,
         }
-        super().__init__(model, max_steps, strategy, train_node, extra_config, init_tqdm=False)
+        super().__init__(
+            model, max_steps, strategy, train_node, extra_config, init_tqdm=False
+        )
 
         self.wandb_project = wandb_project
         self.run_name = run_name or None
@@ -132,7 +141,7 @@ class WandbLogger(Logger):
 
         # Now initialize tqdm after all print statements
         self.init_tqdm()
-        
+
         # Update tqdm progress bar if needed
         if self.step > 0:
             self.pbar.n = self.step
@@ -146,9 +155,9 @@ class WandbLogger(Logger):
 
         if hasattr(self, "run_name"):
             data = {f"{name}_loss": loss, f"{name}_perplexity": float(np.exp(loss))}
-            if self.x_axis == 'step':
+            if self.x_axis == "step":
                 wandb.log(data, step=self.step)
-            elif self.x_axis == 'examples':
+            elif self.x_axis == "examples":
                 wandb.log(data, step=self.examples_trained)
 
     def log_train(self, loss: float):
@@ -162,9 +171,9 @@ class WandbLogger(Logger):
             if self.current_lr:
                 data["lr"] = self.current_lr
 
-            if self.x_axis == 'step':
+            if self.x_axis == "step":
                 wandb.log(data, step=self.step)
-            elif self.x_axis == 'examples':
+            elif self.x_axis == "examples":
                 wandb.log(data, step=self.examples_trained)
 
         self.pbar.update(1)
@@ -180,9 +189,9 @@ class WandbLogger(Logger):
 
         if hasattr(self, "run_name"):
             data = {name: value}
-            if self.x_axis == 'step':
+            if self.x_axis == "step":
                 wandb.log(data, step=self.step)
-            elif self.x_axis == 'examples':
+            elif self.x_axis == "examples":
                 wandb.log(data, step=self.examples_trained)
 
 
@@ -201,8 +210,10 @@ class CSVLogger(Logger):
             "run_name": run_name,
             "log_dir": log_dir,
         }
-        super().__init__(model, max_steps, strategy, train_node, extra_config, init_tqdm=False)
-        
+        super().__init__(
+            model, max_steps, strategy, train_node, extra_config, init_tqdm=False
+        )
+
         # Create run directory
         self.run_dir = os.path.join(log_dir, run_name)
         os.makedirs(self.run_dir, exist_ok=True)
@@ -340,4 +351,4 @@ class CSVLogger(Logger):
 
     def log_info(self, value: float, name: str):
         """Log training loss to CSV"""
-        raise NotImplementedError('log_info not implemented for CSV logging.')
+        raise NotImplementedError("log_info not implemented for CSV logging.")

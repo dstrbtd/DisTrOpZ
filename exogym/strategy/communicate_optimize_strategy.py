@@ -53,9 +53,7 @@ class CommunicateOptimizeStrategy(Strategy):
     ):
         super().__init__(**kwargs)
 
-        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(
-            torch.optim.AdamW
-        )
+        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(torch.optim.AdamW)
 
         self.communication_modules = communication_modules
         self.max_norm = max_norm

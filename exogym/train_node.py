@@ -1,7 +1,12 @@
 import time
 import torch
 import torch.distributed as dist
-from torch.profiler import profile, ProfilerActivity, schedule, tensorboard_trace_handler
+from torch.profiler import (
+    profile,
+    ProfilerActivity,
+    schedule,
+    tensorboard_trace_handler,
+)
 from torch.utils.data import DataLoader
 import numpy as np
 
@@ -13,6 +18,7 @@ from exogym.strategy.strategy import Strategy
 from exogym.aux import Logger, WandbLogger, CSVLogger
 from exogym.strategy.communicate import all_reduce, broadcast
 from exogym.aux import LogModule, CheckpointMixin, CorrelationMixin
+
 
 class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
     """
@@ -58,13 +64,17 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
                 shuffle=config.shuffle,
             )
         else:
-            self.train_dataset = config.train_dataset(self.rank, self.num_nodes, train_dataset=True)
+            self.train_dataset = config.train_dataset(
+                self.rank, self.num_nodes, train_dataset=True
+            )
             self.train_sampler = None
 
         if not callable(config.val_dataset):
             self.val_dataset = config.val_dataset
         else:
-            self.val_dataset = config.val_dataset(self.rank, self.num_nodes, train_dataset=False)
+            self.val_dataset = config.val_dataset(
+                self.rank, self.num_nodes, train_dataset=False
+            )
 
         self.kwargs = config.kwargs
 
@@ -100,7 +110,7 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
         )
 
         self.val_dataloader = DataLoader(
-            self.val_dataset, 
+            self.val_dataset,
             batch_size=self.minibatch_size,
             shuffle=True,
             **self.config.dataloader_kwargs,
@@ -131,19 +141,26 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
 
         return batch
 
-
     def _train_step(self):
         def _tokens_in(minibatch):
-            if isinstance(minibatch, (list, tuple)): x = minibatch[0]
+            if isinstance(minibatch, (list, tuple)):
+                x = minibatch[0]
             elif isinstance(minibatch, dict):
-                x = minibatch.get("input_ids") or minibatch.get("tokens") or next(iter(minibatch.values()))
-            else: x = minibatch
+                x = (
+                    minibatch.get("input_ids")
+                    or minibatch.get("tokens")
+                    or next(iter(minibatch.values()))
+                )
+            else:
+                x = minibatch
             return x.numel()
 
         self.strategy.zero_grad()
 
         grad_accumulation_steps = self.batch_size // self.minibatch_size
-        assert grad_accumulation_steps >= 1, f"Gradient accumulation steps must be >= 1, but got batch_size={self.batch_size} // minibatch_size={self.minibatch_size} = {grad_accumulation_steps}"
+        assert (
+            grad_accumulation_steps >= 1
+        ), f"Gradient accumulation steps must be >= 1, but got batch_size={self.batch_size} // minibatch_size={self.minibatch_size} = {grad_accumulation_steps}"
 
         for i in range(grad_accumulation_steps):
             minibatch = self._get_batch()
@@ -199,7 +216,6 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
 
             with torch.no_grad():
                 for _ in range(int(self.val_size / self.batch_size)):
-
                     for i in range(self.batch_size // self.minibatch_size):
                         minibatch = self._get_batch(eval=True)
 
@@ -241,7 +257,6 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
 
         del model_clone
 
-
     def train(self):
         enable_prof = self.kwargs.get("enable_profiler", True)  # or False by default
         prof = None
@@ -249,8 +264,12 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
             prof = profile(
                 activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
                 schedule=schedule(wait=2, warmup=3, active=5, repeat=1),
-                on_trace_ready=tensorboard_trace_handler(self.kwargs.get("prof_dir", "./traces")),
-                record_shapes=False, profile_memory=False, with_stack=False,
+                on_trace_ready=tensorboard_trace_handler(
+                    self.kwargs.get("prof_dir", "./traces")
+                ),
+                record_shapes=False,
+                profile_memory=False,
+                with_stack=False,
             )
             prof.__enter__()
 
@@ -300,17 +319,22 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
 
             self._train_step()
 
-            if prof is not None: prof.step()
+            if prof is not None:
+                prof.step()
 
             self.local_step += 1
             if self.rank == 0:
                 self.logger.increment_step()
 
             # Calculate correlation if interval is set and it's time
-            if self.config.correlation_interval and self.local_step > 0 and self.local_step % self.config.correlation_interval == 0:
+            if (
+                self.config.correlation_interval
+                and self.local_step > 0
+                and self.local_step % self.config.correlation_interval == 0
+            ):
                 correlation_value = self._correlation_calculation()
                 if self.rank == 0:
-                    self.logger.log_info(correlation_value, 'correlation')
+                    self.logger.log_info(correlation_value, "correlation")
 
             dist.barrier()
 

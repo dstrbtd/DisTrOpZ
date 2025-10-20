@@ -22,7 +22,6 @@ class Strategy(ABC, LogModule):
         lr_scheduler_kwargs: Dict[str, Any] = None,
         **kwargs: Dict[str, Any],
     ):
-
         self.lr_scheduler = lr_scheduler
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
 
@@ -46,7 +45,7 @@ class Strategy(ABC, LogModule):
 
         self.local_step = 0
 
-        if hasattr(self, 'optim_spec'):
+        if hasattr(self, "optim_spec"):
             self.optim = self.optim_spec.build(model)
 
     @abstractmethod

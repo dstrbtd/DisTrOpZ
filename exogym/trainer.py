@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Any, Dict, Union, Callable
 from collections import OrderedDict, defaultdict
 
+
 def _build_connection(config: TrainConfig):
     """
     This is the default callback for setting up pytorch distributed connections.
@@ -49,15 +50,20 @@ def _build_connection(config: TrainConfig):
         )
         torch.cuda.set_device(config.device)
     elif config.device == "cpu":
-        init_process_group_portsafe("gloo", rank=config.rank, world_size=config.num_nodes)
+        init_process_group_portsafe(
+            "gloo", rank=config.rank, world_size=config.num_nodes
+        )
         config.device = torch.device("cpu")
     elif config.device == "mps":
-        init_process_group_portsafe("gloo", rank=config.rank, world_size=config.num_nodes)
+        init_process_group_portsafe(
+            "gloo", rank=config.rank, world_size=config.num_nodes
+        )
         config.device = torch.device("mps")
     else:
         raise ValueError(f"Invalid device type: {config.device}")
 
     print(f"Rank {config.rank} using device {config.device}")
+
 
 def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
     """
@@ -93,6 +99,7 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
         # Always run, even on exceptions
         if dist.is_initialized():
             dist.destroy_process_group()
+
 
 class Trainer:
     """
@@ -141,9 +148,11 @@ class Trainer:
         **kwargs,
     ):
         # assert val_size // batch_size > 0, f"val_size must be geq batch_size: {val_size} // {batch_size}"
-        assert batch_size > 0, 'local batch size needs to be nonzero'
+        assert batch_size > 0, "local batch size needs to be nonzero"
         if minibatch_size is not None:
-            assert minibatch_size <= batch_size, f'minibatch_size ({minibatch_size}) must be <= batch_size ({batch_size}) for gradient accumulation'
+            assert (
+                minibatch_size <= batch_size
+            ), f"minibatch_size ({minibatch_size}) must be <= batch_size ({batch_size}) for gradient accumulation"
 
         # Move a *copy* of the model to CPU so that pickling for mp.spawn does not attempt to share GPU storage.
         cpu_model = copy.deepcopy(self.model_orig).cpu()
@@ -174,7 +183,7 @@ class Trainer:
 
         # Auto-detect minibatch_size if not provided
         if minibatch_size is None:
-            force_recalculate = kwargs.get('force_minibatch_recalculate', False)
+            force_recalculate = kwargs.get("force_minibatch_recalculate", False)
             minibatch_size = self.find_minibatch_size(
                 num_nodes,
                 batch_size,
@@ -184,7 +193,6 @@ class Trainer:
 
         self.port += 1
 
-        
         manager = mp.Manager()
         result_queue = manager.Queue()
 
@@ -247,15 +255,19 @@ class Trainer:
         """Clear the cached minibatch size results."""
         self._minibatch_cache.clear()
         print("Minibatch size cache cleared.")
-    
-    def find_minibatch_size(self, num_nodes: int, batch_size: int, force_recalculate: bool = False):
+
+    def find_minibatch_size(
+        self, num_nodes: int, batch_size: int, force_recalculate: bool = False
+    ):
         cache_key = (num_nodes, batch_size)
-        
+
         if not force_recalculate and cache_key in self._minibatch_cache:
             cached_size = self._minibatch_cache[cache_key]
-            print(f'Using cached minibatch_size={cached_size} for batch_size={batch_size}, num_nodes={num_nodes}')
+            print(
+                f"Using cached minibatch_size={cached_size} for batch_size={batch_size}, num_nodes={num_nodes}"
+            )
             return cached_size
-        
+
         # Use the isolated minibatch probe
         minibatch_size = find_minibatch_size_isolated(
             self.config,
@@ -263,8 +275,8 @@ class Trainer:
             batch_size,
             devices=self.devices,
             device=self.device,
-            port=self.port
+            port=self.port,
         )
-        
+
         self._minibatch_cache[cache_key] = minibatch_size
         return minibatch_size

@@ -70,12 +70,18 @@ def build_dataset_small(dataset, block_size=1024, start_pc=0.0, end_pc=1.0):
     # Determine the dataset identifier and mapping function.
     if dataset == "shakespeare":
         dataset_id = "Trelis/tiny-shakespeare"
-        def mapping_fn(x): return {"text": x["Text"]}
+
+        def mapping_fn(x):
+            return {"text": x["Text"]}
+
         load_config = {}
     elif dataset == "wikitext":
         dataset_id = "wikitext"
         config = "wikitext-2-raw-v1"
-        def mapping_fn(x): return {"text": x["text"]}
+
+        def mapping_fn(x):
+            return {"text": x["text"]}
+
         load_config = {"name": config}
     else:
         raise ValueError(f"Unknown dataset: {dataset}")

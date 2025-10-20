@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 
 from exogym.aux.utils import LogModule
 
+
 # COMMUNICATION
 def mps_compatible(func):
     # Wrapper for all_gather which handles tensor_list and tensor
@@ -161,7 +162,6 @@ class Strategy(ABC, LogModule):
         lr_scheduler_kwargs: Dict[str, Any] = None,
         **kwargs: Dict[str, Any],
     ):
-
         self.lr_scheduler = lr_scheduler
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
 
@@ -185,7 +185,7 @@ class Strategy(ABC, LogModule):
 
         self.local_step = 0
 
-        if hasattr(self, 'optim_spec'):
+        if hasattr(self, "optim_spec"):
             self.optim = self.optim_spec.build(model)
 
     @abstractmethod
@@ -283,6 +283,7 @@ class SimpleReduceStrategy(Strategy):
 
         super().step()
 
+
 # COMMUNICATE OPTIMIZER STRATEGY
 class CommunicationModule(ABC):
     """Abstract base class for communication modules."""
@@ -330,9 +331,7 @@ class CommunicateOptimizeStrategy(Strategy):
     ):
         super().__init__(**kwargs)
 
-        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(
-            torch.optim.AdamW
-        )
+        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(torch.optim.AdamW)
 
         self.communication_modules = communication_modules
         self.max_norm = max_norm
@@ -449,7 +448,6 @@ class FedAvgStrategy(CommunicateOptimizeStrategy):
         max_norm: float = None,
         **kwargs,
     ):
-
         # Create the averaging communicator
         averaging_comm = AveragingCommunicator(island_size=island_size)
 
@@ -474,6 +472,7 @@ class FedAvgStrategy(CommunicateOptimizeStrategy):
         if self.island_size is None:
             self.island_size = num_nodes
 
+
 STRATEGY = FedAvgStrategy(
     inner_optim=OptimSpec(torch.optim.AdamW, lr=0.0004),
     lr_scheduler="lambda_cosine",
@@ -481,5 +480,5 @@ STRATEGY = FedAvgStrategy(
         "warmup_steps": 1000,
         "cosine_anneal": True,
     },
-    island_size = 5,
+    island_size=5,
 )

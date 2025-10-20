@@ -13,10 +13,15 @@ from exogym.train_node import TrainNode
 from exogym.common import TrainConfig
 from exogym.utils import init_process_group_portsafe
 
+
 def _get_mps_allocated_bytes():
     """Get MPS allocated memory in bytes, defensively handling API variations."""
     if hasattr(torch, "mps") and torch.backends.mps.is_available():
-        for name in ("current_allocated_memory", "allocated_memory", "memory_allocated"):
+        for name in (
+            "current_allocated_memory",
+            "allocated_memory",
+            "memory_allocated",
+        ):
             fn = getattr(torch.mps, name, None)
             if callable(fn):
                 try:
@@ -28,10 +33,12 @@ def _get_mps_allocated_bytes():
 
 class _PeakMemSampler:
     """Background thread that samples RSS and MPS memory at high frequency to track peak usage."""
-    
+
     def __init__(self, include_mps: bool):
         self.proc = psutil.Process(os.getpid())
-        self.include_mps = include_mps and hasattr(torch, "mps") and torch.backends.mps.is_available()
+        self.include_mps = (
+            include_mps and hasattr(torch, "mps") and torch.backends.mps.is_available()
+        )
         self._stop = threading.Event()
         self.peak_rss = self._rss_now()
         self.peak_mps = 0
@@ -85,7 +92,12 @@ class _PeakMemSampler:
         self._thr.join()
 
 
-def _minibatch_probe_worker(config: TrainConfig, batch_size: int, num_nodes: int, result_queue: multiprocessing.Queue):
+def _minibatch_probe_worker(
+    config: TrainConfig,
+    batch_size: int,
+    num_nodes: int,
+    result_queue: multiprocessing.Queue,
+):
     """
     Runs minibatch size probe in an isolated subprocess.
     This ensures any CUDA/MPS contexts are fully released after probing.
@@ -99,7 +111,7 @@ def _minibatch_probe_worker(config: TrainConfig, batch_size: int, num_nodes: int
     cfg.rank = 0
     cfg.max_steps = 3
     cfg.kwargs = (cfg.kwargs or {}).copy()
-    cfg.kwargs['disable_logging'] = True
+    cfg.kwargs["disable_logging"] = True
 
     # Determine device for probe
     if not cfg.device:
@@ -126,19 +138,23 @@ def _minibatch_probe_worker(config: TrainConfig, batch_size: int, num_nodes: int
         available_memory = single_gpu_memory * num_gpus
         memory_type = "GPU"
         memory_threshold = available_memory * 0.9
-        print(f"Detected {num_gpus} GPU(s) with {single_gpu_memory / (1024**3):.2f} GB each")
+        print(
+            f"Detected {num_gpus} GPU(s) with {single_gpu_memory / (1024**3):.2f} GB each"
+        )
         print(f"Total GPU memory available: {available_memory / (1024**3):.2f} GB")
     else:
         available_memory = psutil.virtual_memory().available
         memory_type = "system"
         memory_threshold = available_memory * 0.5
-        print(f"Using {memory_type} memory: {available_memory / (1024**3):.2f} GB available")
+        print(
+            f"Using {memory_type} memory: {available_memory / (1024**3):.2f} GB available"
+        )
 
     def try_minibatch(minib):
         """Try running with a specific minibatch size."""
         cfg.minibatch_size = minib
-        print(f'Testing minibatch size {minib}')
-        
+        print(f"Testing minibatch size {minib}")
+
         try:
             # Clear caches before attempt
             if torch.cuda.is_available():
@@ -178,12 +194,20 @@ def _minibatch_probe_worker(config: TrainConfig, batch_size: int, num_nodes: int
 
             if total_memory_needed < memory_threshold:
                 print(f"Found suitable minibatch_size={minib}")
-                print(f"Estimated memory per node (peak): {actual_usage / (1024**3):.2f} GB")
-                print(f"Total for {num_nodes} nodes: {total_memory_needed / (1024**3):.2f} GB")
-                print(f"Available {memory_type} memory: {available_memory / (1024**3):.2f} GB")
+                print(
+                    f"Estimated memory per node (peak): {actual_usage / (1024**3):.2f} GB"
+                )
+                print(
+                    f"Total for {num_nodes} nodes: {total_memory_needed / (1024**3):.2f} GB"
+                )
+                print(
+                    f"Available {memory_type} memory: {available_memory / (1024**3):.2f} GB"
+                )
                 return True
             else:
-                print(f"minibatch_size={minib} would use {total_memory_needed / (1024**3):.2f} GB (peak), reducing...")
+                print(
+                    f"minibatch_size={minib} would use {total_memory_needed / (1024**3):.2f} GB (peak), reducing..."
+                )
                 return False
 
         except (torch.cuda.OutOfMemoryError, RuntimeError, MemoryError) as e:
@@ -207,14 +231,20 @@ def _minibatch_probe_worker(config: TrainConfig, batch_size: int, num_nodes: int
     dist.destroy_process_group()
 
 
-def find_minibatch_size_isolated(config: TrainConfig, num_nodes: int, batch_size: int, 
-                                  devices=None, device=None, port=None):
+def find_minibatch_size_isolated(
+    config: TrainConfig,
+    num_nodes: int,
+    batch_size: int,
+    devices=None,
+    device=None,
+    port=None,
+):
     """
     Find optimal minibatch size using subprocess isolation.
     Always runs in a subprocess to ensure clean memory state.
     """
     print("Profiling training to find optimal minibatch size...")
-    
+
     ctx = multiprocessing.get_context("spawn")
     q = ctx.Queue()
 
@@ -228,16 +258,18 @@ def find_minibatch_size_isolated(config: TrainConfig, num_nodes: int, batch_size
         args=(probe_cfg, batch_size, num_nodes, q),
     )
     p.start()
-    
+
     try:
         found = q.get(timeout=600)  # 10 min timeout
     except Exception:
         found = 0
-    
+
     p.join()
 
     if found <= 0:
-        raise Exception(f'Cannot find suitable minibatch size with batch_size={batch_size}')
+        raise Exception(
+            f"Cannot find suitable minibatch size with batch_size={batch_size}"
+        )
 
-    print(f'Found suitable minibatch_size={found} (via isolated probe)')
+    print(f"Found suitable minibatch_size={found} (via isolated probe)")
     return found

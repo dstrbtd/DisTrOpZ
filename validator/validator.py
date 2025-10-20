@@ -1,68 +1,157 @@
+import os
+import io
 import json
-from nanogpt import GPT, GPTConfig, get_dataset
-
-from miner.miner_demo import STRATEGY as demo_strategy
-from miner.miner_diloco import STRATEGY as diloco_strategy
-from miner.miner_federated_averaging import STRATEGY as federated_averaging_strategy
-from miner.miner_sparta_diloco import STRATEGY as sparta_diloco_strategy
-from miner.miner_sparta import STRATEGY as sparta_strategy
+import requests
+import hashlib
+import bittensor as bt
 from exogym.trainer import Trainer
+from nanogpt import GPT, GPTConfig, get_dataset
+import argparse
 
-NUM_NODES = 2
+# -----------------------------
+# 1. Setup basic params
+# -----------------------------
 DEVICE = "cuda"
-MAX_STEPS = 10000
-MODEL_SIZE = "large"
 
+
+# -----------------------------
+# 2. Utility: verify gist integrity
+# -----------------------------
+def verify_gist(gist_url: str, expected_hash: str):
+    """Download gist, verify SHA256, return path if valid."""
+    # Get raw gist content
+    api_url = gist_url.replace(
+        "https://gist.github.com/", "https://api.github.com/gists/"
+    )
+    resp = requests.get(api_url)
+    resp.raise_for_status()
+    files = resp.json()["files"]
+    if not files:
+        raise ValueError("Gist has no files.")
+    filename, fileinfo = next(iter(files.items()))
+    content = fileinfo["content"]
+    actual_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    if actual_hash != expected_hash:
+        raise ValueError(
+            f"Hash mismatch! expected {expected_hash[:8]} got {actual_hash[:8]}"
+        )
+    path = os.path.join("/tmp", filename)
+    with open(path, "w") as f:
+        f.write(content)
+    return path
+
+
+# -----------------------------
+# 3. Main validation loop
+# -----------------------------
 def main():
-    # Get datasets - this will take a while the first time, as the dataset has to be imported and processed.
+    parser = argparse.ArgumentParser(description="Miner script")
+    parser.add_argument(
+        "--number_of_nodes",
+        type=int,
+        default=2,
+        help="Nuber of GPUs to use for testing",
+    )
+    parser.add_argument(
+        "--max_steps", type=int, default=10000, help="Maximum number of steps to test"
+    )
+    parser.add_argument("--mode_size", help="NanoGPT model size")
+    parser.add_argument(
+        "--output_dir", type=str, default="results", help="Results directory"
+    )
+    parser.add_argument(
+        "--netuid", type=int, default=178, help="Bittensor network UID."
+    )
+
+    bt.wallet.add_args(parser)
+    bt.subtensor.add_args(parser)
+    config = bt.config(parser)
+    config.subtensor.network = "test"
+    config.subtensor.chain_endpoint = "wss://test.finney.opentensor.ai:443/"
+
+    bt.logging.setLevel("INFO")
+    bt.logging.info(config)
+    wallet = bt.wallet(config=config)
+    subtensor = bt.subtensor(config=config)
+    metagraph = subtensor.metagraph(config.netuid)
+    os.makedirs(config.output_dir, exist_ok=True)
+
+    bt.logging.info(f"Loaded metagraph with {len(metagraph.hotkeys)} miners.")
+
+    # Load dataset once
     train_dataset, vocab_size = get_dataset(
         "owt",
         block_size=1024,
         device="cpu",
         start_pc=0.0,
-        end_pc=0.005 * NUM_NODES,
+        end_pc=0.005 * config.number_of_nodes,
     )
     val_dataset, vocab_size = get_dataset(
         "owt", block_size=1024, device="cpu", start_pc=0.99, end_pc=1.0
     )
 
-    # Create model
-    gpt_config = GPTConfig.gpt2_size_map(MODEL_SIZE)
-
-    strategies = [diloco_strategy, demo_strategy, federated_averaging_strategy, sparta_diloco_strategy, sparta_strategy]
-    # strategies = [demo_strategy]
-
     metrics = {}
-    for strategy in strategies:
-        # Create model
-        model = GPT(gpt_config)
 
-        # Create trainer
-        trainer = Trainer(
-            model,
-            train_dataset,
-            val_dataset,
-            # port=12355 # Modify this if we get port conflict errors
-        )
-        
-        # Train
-        _, metrics_out = trainer.fit(
-            max_steps=MAX_STEPS,
-            strategy=strategy,
-            num_epochs=5,
-            num_nodes=NUM_NODES,
-            device=DEVICE,
-            batch_size=16,
-            minibatch_size=2,
-            shuffle=False,
-            val_size=256,
-            val_interval=10,
-            run_name=str(strategy),
-        )
-        metrics[str(strategy)] = metrics_out
-        
-        with open(f"results/metrics-gpt-{MODEL_SIZE}-{NUM_NODES}-{MAX_STEPS}.json", 'w') as json_file:
-            json.dump(metrics, json_file, indent=4)
+    for uid, hotkey in enumerate(metagraph.hotkeys):
+        bt.logging.info(f"🔍 Checking miner UID={uid} hotkey={hotkey}")
+
+        try:
+            meta = subtensor.get_metadata(
+                wallet, uid=uid, netuid=config.netuid, key="strategy_gist"
+            )
+            if not meta:
+                bt.logging.warning(f"❌ No strategy_gist for {hotkey}")
+                continue
+
+            data = json.loads(meta)
+            gist_url, sha = data["url"], data["sha256"]
+            bt.logging.info(f"Found gist: {gist_url}")
+
+            # verify and save
+            path = verify_gist(gist_url, sha)
+
+            # dynamically import strategy
+            namespace = {}
+            exec(open(path).read(), namespace)
+            if "STRATEGY" not in namespace:
+                bt.logging.warning(f"❌ No STRATEGY object found in {gist_url}")
+                continue
+            strategy = namespace["STRATEGY"]
+
+            # create model + trainer
+            model = GPT(GPTConfig.gpt2_size_map(config.model_size))
+            trainer = Trainer(model, train_dataset, val_dataset, device=DEVICE)
+
+            # train & benchmark
+            _, metrics_out = trainer.fit(
+                max_steps=config.max_steps,
+                strategy=strategy,
+                num_epochs=1,
+                num_nodes=config.number_of_nodes,
+                device=DEVICE,
+                batch_size=16,
+                minibatch_size=2,
+                shuffle=False,
+                val_size=128,
+                val_interval=10,
+                run_name=f"uid{uid}_{hotkey[:6]}",
+            )
+
+            metrics[hotkey] = metrics_out
+            bt.logging.success(f"✅ Finished miner {hotkey}: {metrics_out}")
+
+        except Exception as e:
+            bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
+
+    # save results
+    out_path = os.path.join(
+        config.output_dir,
+        f"metrics-gpt-{config.model_size}-{config.number_of_nodes}-{config.max_steps}.json",
+    )
+    with open(out_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    bt.logging.success(f"Saved metrics → {out_path}")
+
 
 if __name__ == "__main__":
     main()

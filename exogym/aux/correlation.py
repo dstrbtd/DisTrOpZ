@@ -2,6 +2,7 @@ import os
 import torch
 import numpy as np
 
+
 class CorrelationMixin:
     def _correlation_calculation(self):
         if self.num_nodes < 2:

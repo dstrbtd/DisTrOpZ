@@ -9,3 +9,4 @@ remote/
 dist/
 exogym.egg-info/
 logs/
+todo.py

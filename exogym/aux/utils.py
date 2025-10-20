@@ -85,12 +85,8 @@ def extract_config(obj, max_depth=10, current_depth=0):
     if hasattr(obj, "__dict__"):
         result = {}
         for key, value in obj.__dict__.items():
-            if (
-                not key.startswith("_") and len(result) < 50
-            ):  # Skip private attributes
-                result[key] = extract_config(
-                    value, max_depth, current_depth + 1
-                )
+            if not key.startswith("_") and len(result) < 50:  # Skip private attributes
+                result[key] = extract_config(value, max_depth, current_depth + 1)
         return result
 
     # For other objects, try to get basic info
@@ -118,9 +114,9 @@ def create_config(
     config = {}
 
     # Add strategy and train_node configurations if they exist
-    if strategy and hasattr(strategy, '__config__'):
+    if strategy and hasattr(strategy, "__config__"):
         config["strategy"] = strategy.__config__()
-    if train_node and hasattr(train_node, '__config__'):
+    if train_node and hasattr(train_node, "__config__"):
         config.update(train_node.__config__())
 
     # Model information
@@ -216,6 +212,7 @@ def safe_log_dict(data: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
 
     return safe_dict
 
+
 def print_dataset_size(dataset: torch.utils.data.Dataset):
     import pickle
     import io
@@ -223,6 +220,7 @@ def print_dataset_size(dataset: torch.utils.data.Dataset):
     buffer = io.BytesIO()
     pickle.dump(dataset, buffer, protocol=pickle.HIGHEST_PROTOCOL)
     print(f"Dataset size: {buffer.tell() // 1024 // 1024} MB")
+
 
 def _average_model_states(model_states: Dict[int, OrderedDict]) -> OrderedDict:
     """
@@ -242,6 +240,7 @@ def _average_model_states(model_states: Dict[int, OrderedDict]) -> OrderedDict:
             averaged_state[param_name] = torch.mean(param_stack, dim=0)
 
     return averaged_state
+
 
 def get_device():
     if torch.cuda.is_available():

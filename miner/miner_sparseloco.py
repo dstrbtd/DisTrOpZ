@@ -16,6 +16,7 @@ from exogym.aux.utils import LogModule
 
 ParamsT: TypeAlias = Union[Iterable[torch.Tensor], Iterable[dict[str, Any]]]
 
+
 # BASE COMMUNICATION
 def mps_compatible(func):
     # Wrapper for all_gather which handles tensor_list and tensor
@@ -167,7 +168,6 @@ class Strategy(ABC, LogModule):
         lr_scheduler_kwargs: Dict[str, Any] = None,
         **kwargs: Dict[str, Any],
     ):
-
         self.lr_scheduler = lr_scheduler
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
 
@@ -191,7 +191,7 @@ class Strategy(ABC, LogModule):
 
         self.local_step = 0
 
-        if hasattr(self, 'optim_spec'):
+        if hasattr(self, "optim_spec"):
             self.optim = self.optim_spec.build(model)
 
     @abstractmethod
@@ -289,6 +289,7 @@ class SimpleReduceStrategy(Strategy):
 
         super().step()
 
+
 # BASE COMMUNICATE OPTIMIZER STRATEGY
 class CommunicationModule(ABC):
     """Abstract base class for communication modules."""
@@ -336,9 +337,7 @@ class CommunicateOptimizeStrategy(Strategy):
     ):
         super().__init__(**kwargs)
 
-        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(
-            torch.optim.AdamW
-        )
+        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(torch.optim.AdamW)
 
         self.communication_modules = communication_modules
         self.max_norm = max_norm
@@ -375,6 +374,7 @@ class CommunicateOptimizeStrategy(Strategy):
 
         self.optim = self.optim_spec.build(model)
         self._setup_scheduler()
+
 
 # OPTIMIZER
 
@@ -434,7 +434,14 @@ class SparseLoCo(torch.optim.SGD):
         process_group: Optional[dist.ProcessGroup] = None,
         **kwargs,
     ):
-        super().__init__(params, lr=lr, momentum=momentum, nesterov=nesterov, weight_decay=0.0, **kwargs)
+        super().__init__(
+            params,
+            lr=lr,
+            momentum=momentum,
+            nesterov=nesterov,
+            weight_decay=0.0,
+            **kwargs,
+        )
 
         self.error_decay = error_decay
         self.top_k = top_k
@@ -445,7 +452,12 @@ class SparseLoCo(torch.optim.SGD):
         self.process_group = process_group
 
         self.chunking = ChunkingTransform(self.param_groups, chunk_size, use_dct)
-        self.compressor = TopKCompressor(use_quantization, quantization_bins, quantization_range, use_randomk=use_randomk)
+        self.compressor = TopKCompressor(
+            use_quantization,
+            quantization_bins,
+            quantization_range,
+            use_randomk=use_randomk,
+        )
 
         for group in self.param_groups:
             for p in group["params"]:
@@ -495,17 +507,24 @@ class SparseLoCo(torch.optim.SGD):
                         chunk_len = h * w
                     else:
                         chunk_len = tensor_to_compress.shape[-1]
-                    k = int(max(1, round(chunk_len * self.top_k / (self.chunk_size ** 2))))
+                    k = int(
+                        max(1, round(chunk_len * self.top_k / (self.chunk_size**2)))
+                    )
 
-                indices, values, shape, local_quant_params = self.compressor.compress(tensor_to_compress, k)
+                indices, values, shape, local_quant_params = self.compressor.compress(
+                    tensor_to_compress, k
+                )
 
-                local_reconstruction = self.compressor.decompress(indices, values, shape, p, local_quant_params)
+                local_reconstruction = self.compressor.decompress(
+                    indices, values, shape, p, local_quant_params
+                )
                 transmitted_gradient = self.chunking.decode(local_reconstruction)
                 error_buffer.sub_(transmitted_gradient)
 
                 gathered_quant_params = (
                     self._all_gather_quant_params(local_quant_params)
-                    if self.compressor.use_quantization and local_quant_params is not None
+                    if self.compressor.use_quantization
+                    and local_quant_params is not None
                     else None
                 )
                 gathered_indices = self._all_gather_tensor(indices)
@@ -513,10 +532,13 @@ class SparseLoCo(torch.optim.SGD):
 
                 if self.compressor.use_quantization and gathered_quant_params:
                     gathered_values = [
-                        self.compressor._dequantize(v, qp) for v, qp in zip(gathered_values, gathered_quant_params)
+                        self.compressor._dequantize(v, qp)
+                        for v, qp in zip(gathered_values, gathered_quant_params)
                     ]
 
-                aggregated_reconstruction = self.compressor.batch_decompress(gathered_indices, gathered_values, shape, p)
+                aggregated_reconstruction = self.compressor.batch_decompress(
+                    gathered_indices, gathered_values, shape, p
+                )
                 aggregated_gradient = self.chunking.decode(aggregated_reconstruction)
 
                 p.grad.copy_(aggregated_gradient)
@@ -525,10 +547,13 @@ class SparseLoCo(torch.optim.SGD):
 
         super().step()
 
+
 class ChunkingTransform:
     """Handles tensor chunking, with an optional DCT for DeMo reproduction."""
 
-    def __init__(self, param_groups: ParamsT, chunk_size: int, use_dct: bool, norm: str = "ortho"):
+    def __init__(
+        self, param_groups: ParamsT, chunk_size: int, use_dct: bool, norm: str = "ortho"
+    ):
         self.target_chunk = chunk_size
         self.use_dct = use_dct
         self.decode_info: Optional[Tuple[str, torch.Size]] = None
@@ -614,7 +639,13 @@ class ChunkingTransform:
 class TopKCompressor:
     """Top-K / Random-K sparsification with optional statistical quantization."""
 
-    def __init__(self, use_quantization: bool, n_bins: int, range_in_sigmas: float, use_randomk: bool = False):
+    def __init__(
+        self,
+        use_quantization: bool,
+        n_bins: int,
+        range_in_sigmas: float,
+        use_randomk: bool = False,
+    ):
         self.use_quantization = use_quantization
         self.use_randomk = use_randomk
         self.rng = None
@@ -644,10 +675,14 @@ class TopKCompressor:
         k = self._clamp_topk(x_flat_chunks, k)
 
         if self.use_randomk:
-            rand_vals = torch.empty_like(x_flat_chunks).uniform_(0.0, 1.0, generator=self.rng)
+            rand_vals = torch.empty_like(x_flat_chunks).uniform_(
+                0.0, 1.0, generator=self.rng
+            )
             _, idx = torch.topk(rand_vals, k=k, dim=-1)
         else:
-            _, idx = torch.topk(x_flat_chunks.abs(), k=k, dim=-1, largest=True, sorted=False)
+            _, idx = torch.topk(
+                x_flat_chunks.abs(), k=k, dim=-1, largest=True, sorted=False
+            )
 
         val = torch.gather(x_flat_chunks, dim=-1, index=idx)
 
@@ -676,7 +711,13 @@ class TopKCompressor:
         else:
             x_flat = x
 
-        x_flat.scatter_reduce_(dim=-1, index=idx.to(torch.int64), src=val.to(ref_param.dtype), reduce="mean", include_self=False)
+        x_flat.scatter_reduce_(
+            dim=-1,
+            index=idx.to(torch.int64),
+            src=val.to(ref_param.dtype),
+            reduce="mean",
+            include_self=False,
+        )
 
         if len(x_shape) > 2:
             x = rearrange(x_flat, "y x (h w) -> y x h w", h=x_shape[2])
@@ -685,9 +726,13 @@ class TopKCompressor:
         return x
 
     @torch.no_grad()
-    def batch_decompress(self, idx_list: list, val_list: list, x_shape: Tuple, ref_param: torch.Tensor) -> torch.Tensor:
+    def batch_decompress(
+        self, idx_list: list, val_list: list, x_shape: Tuple, ref_param: torch.Tensor
+    ) -> torch.Tensor:
         idx_all = torch.cat([i.to(ref_param.device) for i in idx_list], dim=-1)
-        val_all = torch.cat([v.to(ref_param.device, ref_param.dtype) for v in val_list], dim=-1)
+        val_all = torch.cat(
+            [v.to(ref_param.device, ref_param.dtype) for v in val_list], dim=-1
+        )
 
         x = torch.zeros(x_shape, device=ref_param.device, dtype=ref_param.dtype)
         if len(x_shape) > 2:
@@ -695,7 +740,13 @@ class TopKCompressor:
         else:
             x_flat = x
 
-        x_flat.scatter_reduce_(dim=-1, index=idx_all.to(torch.int64), src=val_all, reduce="mean", include_self=False)
+        x_flat.scatter_reduce_(
+            dim=-1,
+            index=idx_all.to(torch.int64),
+            src=val_all,
+            reduce="mean",
+            include_self=False,
+        )
 
         if len(x_shape) > 2:
             x = rearrange(x_flat, "y x (h w) -> y x h w", h=x_shape[2])
@@ -717,11 +768,19 @@ class TopKCompressor:
         if scale == 0 or torch.isnan(scale) or torch.isinf(scale):
             scale = torch.tensor(1.0, dtype=centered_val.dtype, device=val.device)
 
-        quantized = ((centered_val.float() / scale + offset).round().clamp(0, self.n_bins - 1)).to(torch.uint8)
+        quantized = (
+            (centered_val.float() / scale + offset).round().clamp(0, self.n_bins - 1)
+        ).to(torch.uint8)
 
         lookup = torch.zeros(self.n_bins, dtype=torch.float32, device=val.device)
-        sums = torch.zeros_like(lookup).scatter_add_(0, quantized.long().flatten(), centered_val.float().flatten())
-        counts = torch.zeros_like(lookup).scatter_add_(0, quantized.long().flatten(), torch.ones_like(centered_val.float().flatten()))
+        sums = torch.zeros_like(lookup).scatter_add_(
+            0, quantized.long().flatten(), centered_val.float().flatten()
+        )
+        counts = torch.zeros_like(lookup).scatter_add_(
+            0,
+            quantized.long().flatten(),
+            torch.ones_like(centered_val.float().flatten()),
+        )
         lookup = torch.where(counts > 0, sums / counts, 0.0)
 
         params_tuple = (shift, float(scale), offset, lookup, val.dtype)
@@ -733,6 +792,7 @@ class TopKCompressor:
         shift, _, _, lookup, orig_dtype = quant_params
         dequantized = lookup.to(val.device)[val.long()] + shift
         return dequantized.to(orig_dtype)
+
 
 # https://github.com/zh217/torch-dct
 def _dct_fft_impl(v):

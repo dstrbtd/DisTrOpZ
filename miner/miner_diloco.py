@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 
 from exogym.aux.utils import LogModule
 
+
 # BASE COMMUNICATION
 def mps_compatible(func):
     # Wrapper for all_gather which handles tensor_list and tensor
@@ -162,7 +163,6 @@ class Strategy(ABC, LogModule):
         lr_scheduler_kwargs: Dict[str, Any] = None,
         **kwargs: Dict[str, Any],
     ):
-
         self.lr_scheduler = lr_scheduler
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
 
@@ -186,7 +186,7 @@ class Strategy(ABC, LogModule):
 
         self.local_step = 0
 
-        if hasattr(self, 'optim_spec'):
+        if hasattr(self, "optim_spec"):
             self.optim = self.optim_spec.build(model)
 
     @abstractmethod
@@ -284,6 +284,7 @@ class SimpleReduceStrategy(Strategy):
 
         super().step()
 
+
 # BASE COMMUNICATE OPTIMIZER STRATEGY
 class CommunicationModule(ABC):
     """Abstract base class for communication modules."""
@@ -331,9 +332,7 @@ class CommunicateOptimizeStrategy(Strategy):
     ):
         super().__init__(**kwargs)
 
-        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(
-            torch.optim.AdamW
-        )
+        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(torch.optim.AdamW)
 
         self.communication_modules = communication_modules
         self.max_norm = max_norm
@@ -371,24 +370,28 @@ class CommunicateOptimizeStrategy(Strategy):
         self.optim = self.optim_spec.build(model)
         self._setup_scheduler()
 
+
 # DILOCO COMMUNICATOR
 class DiLoCoCommunicator(CommunicationModule):
     """
     Communication module for master-worker setup (like DiLoCo).
     """
-    
-    def __init__(self, 
-                 H: int = 100, 
-                 outer_optim_spec: Optional[Union[str, OptimSpec]] = None,
-                 **kwargs):
+
+    def __init__(
+        self,
+        H: int = 100,
+        outer_optim_spec: Optional[Union[str, OptimSpec]] = None,
+        **kwargs,
+    ):
         self.H = H
         self.outer_optim_spec = ensure_optim_spec(
-            outer_optim_spec, OptimSpec(torch.optim.SGD, lr=0.7, nesterov=True, momentum=0.9)
+            outer_optim_spec,
+            OptimSpec(torch.optim.SGD, lr=0.7, nesterov=True, momentum=0.9),
         )
         self.strategy = None  # Will be set by CommunicateOptimizeStrategy
         self.master_model = None
         self.outer_optimizer = None
-    
+
     def communicate(self, model, rank: int, num_nodes: int, local_step: int) -> None:
         """Perform master-worker communication."""
         if num_nodes > 1 and local_step % self.H == 0 and local_step > 0:
@@ -407,7 +410,7 @@ class DiLoCoCommunicator(CommunicationModule):
             # Broadcast updated parameters
             for param in model.parameters():
                 broadcast(param.data, src=0)
-    
+
     def _init_node(self, model, rank: int, num_nodes: int) -> None:
         """Initialize master model for rank 0."""
         if rank == 0:
@@ -415,41 +418,41 @@ class DiLoCoCommunicator(CommunicationModule):
             for param in self.master_model.parameters():
                 param.requires_grad = True
             self.outer_optimizer = self.outer_optim_spec.build(self.master_model)
-    
+
     def _set_master_grad(self, model) -> None:
         """Set gradients on master model based on difference between master and worker models."""
         for name, param in self.master_model.named_parameters():
             param.grad = param.data - model.state_dict()[name].data.to("cpu")
-    
+
     def _synchronize_master_model(self, model) -> None:
         """Synchronize worker model with master model parameters."""
         for name, param in model.named_parameters():
             param.data = self.master_model.state_dict()[name].data.to(param.device)
 
+
 # DILOCO STRATEGY
 class DiLoCoStrategy(CommunicateOptimizeStrategy):
     def __init__(
         self,
-        optim_spec: Optional[Union[str, OptimSpec]] = None, # inner optimizer is named optim_spec for consistency
+        optim_spec: Optional[
+            Union[str, OptimSpec]
+        ] = None,  # inner optimizer is named optim_spec for consistency
         outer_optim_spec: Optional[Union[str, OptimSpec]] = None,
         H: int = 100,
         **kwargs,
     ):
         self.H = H
-        
+
         # Ensure optim_spec is properly initialized
-        optim_spec = ensure_optim_spec(
-            optim_spec, OptimSpec(torch.optim.AdamW)
-        )
-        
+        optim_spec = ensure_optim_spec(optim_spec, OptimSpec(torch.optim.AdamW))
+
         # Create the DiLoCo communicator
         self.diloco_comm = DiLoCoCommunicator(H=H, outer_optim_spec=outer_optim_spec)
-        
+
         super().__init__(
-            optim_spec=optim_spec,
-            communication_modules=[self.diloco_comm],
-            **kwargs
+            optim_spec=optim_spec, communication_modules=[self.diloco_comm], **kwargs
         )
+
 
 STRATEGY = DiLoCoStrategy(
     optim_spec=OptimSpec(torch.optim.AdamW, lr=0.0004),

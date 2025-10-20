@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 
 from exogym.aux.utils import LogModule
 
+
 # BASE COMMUNICATION
 def mps_compatible(func):
     # Wrapper for all_gather which handles tensor_list and tensor
@@ -164,7 +165,6 @@ class Strategy(ABC, LogModule):
         lr_scheduler_kwargs: Dict[str, Any] = None,
         **kwargs: Dict[str, Any],
     ):
-
         self.lr_scheduler = lr_scheduler
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
 
@@ -188,7 +188,7 @@ class Strategy(ABC, LogModule):
 
         self.local_step = 0
 
-        if hasattr(self, 'optim_spec'):
+        if hasattr(self, "optim_spec"):
             self.optim = self.optim_spec.build(model)
 
     @abstractmethod
@@ -286,6 +286,7 @@ class SimpleReduceStrategy(Strategy):
 
         super().step()
 
+
 # BASE COMMUNICATE OPTIMIZER STRATEGY
 class CommunicationModule(ABC):
     """Abstract base class for communication modules."""
@@ -333,9 +334,7 @@ class CommunicateOptimizeStrategy(Strategy):
     ):
         super().__init__(**kwargs)
 
-        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(
-            torch.optim.AdamW
-        )
+        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(torch.optim.AdamW)
 
         self.communication_modules = communication_modules
         self.max_norm = max_norm
@@ -372,6 +371,7 @@ class CommunicateOptimizeStrategy(Strategy):
 
         self.optim = self.optim_spec.build(model)
         self._setup_scheduler()
+
 
 # OPTIMIZER
 
@@ -510,7 +510,6 @@ class DeMo(torch.optim.SGD):
 
     @torch.no_grad()
     def step(self, closure: Callable | None = None):
-
         self.data_transmit = 0
         self.data_receive = 0
 
@@ -601,8 +600,12 @@ class TransformDCT:
                     # Pregenerate DCT basis matrices
                     if sc not in self.f_dict:
                         identity = torch.eye(sc)
-                        self.f_dict[sc] = _dct(identity, norm=norm).to(p.dtype).to(p.device)
-                        self.b_dict[sc] = _idct(identity, norm=norm).to(p.dtype).to(p.device)
+                        self.f_dict[sc] = (
+                            _dct(identity, norm=norm).to(p.dtype).to(p.device)
+                        )
+                        self.b_dict[sc] = (
+                            _idct(identity, norm=norm).to(p.dtype).to(p.device)
+                        )
 
     @torch.no_grad()
     def einsum_2d(self, x, b, d=None):
@@ -622,7 +625,6 @@ class TransformDCT:
 
     @torch.no_grad()
     def encode(self, x):
-
         if len(x.shape) > 1:  # 2D weights
             n1 = self.shape_dict[x.shape[0]]
             n2 = self.shape_dict[x.shape[1]]
@@ -648,7 +650,6 @@ class TransformDCT:
 
     @torch.no_grad()
     def decode(self, x):
-
         if len(x.shape) > 2:  # 2D weights
             n1 = x.shape[2]
             n2 = x.shape[3]
@@ -685,7 +686,6 @@ class CompressDCT:
 
     @torch.no_grad()
     def compress(self, x, topk):
-
         xshape = x.shape
         if len(x.shape) > 2:  # 2D weights
             x = rearrange(x, "y x h w -> y x (h w)")
@@ -701,7 +701,6 @@ class CompressDCT:
 
     @torch.no_grad()
     def decompress(self, p, idx, val, xshape, totalk):
-
         x = torch.zeros(xshape, device=p.device, dtype=p.dtype)
 
         if len(xshape) > 2:  # 2D weights

@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 import os
 
+
 class LocalTrainNode(TrainNode):
     def __init__(self, config: TrainConfig):
         self.config = config

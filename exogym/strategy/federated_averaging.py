@@ -91,7 +91,6 @@ class FedAvgStrategy(CommunicateOptimizeStrategy):
         max_norm: float = None,
         **kwargs,
     ):
-
         # Create the averaging communicator
         averaging_comm = AveragingCommunicator(island_size=island_size)
 
