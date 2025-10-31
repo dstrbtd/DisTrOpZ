@@ -7,11 +7,15 @@ import bittensor as bt
 from exogym.trainer import Trainer
 from nanogpt import GPT, GPTConfig, get_dataset
 import argparse
+import subprocess
 
 # -----------------------------
 # 1. Setup basic params
 # -----------------------------
 DEVICE = "cuda"
+SANDBOX_IMAGE = "distropz-sandbox"
+DB_URI = os.getenv("DB_URI")  # e.g. postgres://user:pass@db:5432/distropz
+MAX_RUNTIME = 900  # seconds
 
 
 # -----------------------------
@@ -39,6 +43,59 @@ def verify_gist(gist_url: str, expected_hash: str):
     with open(path, "w") as f:
         f.write(content)
     return path
+
+
+# ------------------------------------------------------
+# 3. Validate the metrics schema and sanity bounds
+# ------------------------------------------------------
+def validate_metrics(metrics):
+    required = {"throughput": int, "loss": (int, float), "comm": int}
+    for key, expected_type in required.items():
+        if key not in metrics:
+            raise ValueError(f"Missing key: {key}")
+        if not isinstance(metrics[key], expected_type):
+            raise ValueError(f"{key} has wrong type: {type(metrics[key])}")
+    # bounds
+    if not (0 <= metrics["throughput"] < 10**9):
+        raise ValueError("throughput out of range")
+    if not (0.0 <= metrics["loss"] < 1e6):
+        raise ValueError("loss out of range")
+    if not (0 <= metrics["comm"] < 10**12):
+        raise ValueError("comm out of range")
+    return metrics
+
+
+# ------------------------------------------------------
+# 4. Execute untrusted miner gist inside sandbox container
+# ------------------------------------------------------
+def run_in_sandbox(gist_path):
+    cmd = [
+        "docker",
+        "run",
+        "--rm",
+        "--network=none",
+        "--cpus=2",
+        "--memory=4g",
+        "-v",
+        f"{gist_path}:/sandbox/strategy.py:ro",
+        SANDBOX_IMAGE,
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=MAX_RUNTIME)
+    except subprocess.TimeoutExpired:
+        raise TimeoutError("Sandbox timed out")
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"Sandbox failed: {proc.stderr}")
+
+    try:
+        metrics = json.loads(proc.stdout.strip())
+    except json.JSONDecodeError:
+        raise ValueError(f"Invalid JSON output: {proc.stdout[:200]}")
+
+    if "error" in metrics:
+        raise RuntimeError(f"Sandbox error: {metrics['error']}")
+    return validate_metrics(metrics)
 
 
 # -----------------------------

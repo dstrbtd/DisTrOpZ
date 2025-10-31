@@ -72,6 +72,21 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
     """
     try:
         config.rank = rank
+
+        import importlib.util, sys, os
+
+        # inside each worker
+        if isinstance(config.strategy, str) and os.path.exists(config.strategy):
+            import importlib.util
+
+            spec = importlib.util.spec_from_file_location(
+                "miner_module", config.strategy
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            config.strategy = mod.STRATEGY
+        print(config.strategy)
+
         patch_collectives()
 
         _build_connection(config)
