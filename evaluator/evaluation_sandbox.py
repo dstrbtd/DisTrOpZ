@@ -2,11 +2,17 @@ import json, os, importlib.util, sys, traceback
 from exogym.trainer import Trainer
 from nanogpt import GPT, GPTConfig, get_dataset
 import bittensor as bt
+import sys
 
-NUM_NODES = int(os.getenv("NUM_NODES", 2))
-MAX_STEPS = int(os.getenv("MAX_STEPS", 500))
+# sys.stdout.reconfigure(line_buffering=True)
+
+NUM_NODES = int(os.getenv("NUM_NODES", "2"))
+MAX_STEPS = int(os.getenv("MAX_STEPS", "10"))
 MODEL_SIZE = os.getenv("MODEL_SIZE", "small")
+DATASET = os.getenv("DATASET", "shakespeare")
 DEVICE = os.getenv("DEVICE", "cuda")
+
+print("MAX_STEPS", MAX_STEPS)
 
 
 def load_strategy(path):
@@ -20,21 +26,18 @@ def load_strategy(path):
 
 def main():
     # Miner script is mounted at /sandbox/strategy.py
-    script_path = "/sandbox/strategy.py"
-    script_path = "/root/sandbox/strategy.py"
+    script_path = "sandbox/strategy.py"
     try:
         strategy = script_path
-
-        # datasets (small subset)
         train_dataset, _ = get_dataset(
-            "shakespeare",
+            DATASET,
             block_size=1024,
             device="cpu",
             start_pc=0.0,
             end_pc=0.005 * NUM_NODES,
         )
         val_dataset, _ = get_dataset(
-            "shakespeare", block_size=1024, device="cpu", start_pc=0.99, end_pc=1.0
+            DATASET, block_size=1024, device="cpu", start_pc=0.99, end_pc=1.0
         )
         model = GPT(GPTConfig.gpt2_size_map(MODEL_SIZE))
         trainer = Trainer(model, train_dataset, val_dataset, device=DEVICE)
@@ -56,7 +59,7 @@ def main():
         result = {
             "throughput": int(metrics_out.get("tokens_per_sec", 0)),
             "loss": float(metrics_out.get("loss_per_token", 0.0)),
-            "comm": int(metrics_out.get("comm_bytes_total", 0)),
+            "communication": int(metrics_out.get("comm_bytes_total", 0)),
         }
         print(json.dumps(result))  # output to stdout
 

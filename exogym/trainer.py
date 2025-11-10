@@ -26,6 +26,14 @@ def _build_connection(config: TrainConfig):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = str(config.port)
 
+    os.environ["MASTER_ADDR"] = "127.0.0.1"
+    os.environ["MASTER_PORT"] = str(config.port or 12355)
+    os.environ["NCCL_SOCKET_IFNAME"] = "lo"
+    os.environ["NCCL_IB_DISABLE"] = "1"
+    os.environ["NCCL_CROSS_NIC"] = "0"
+    os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "1"
+    os.environ["NCCL_SHM_DISABLE"] = "0"
+
     if config.device == "" or config.device is None:
         if torch.cuda.is_available():
             config.device = "cuda"
@@ -39,9 +47,10 @@ def _build_connection(config: TrainConfig):
         # If we haven't specified devices, use all devices.
         if config.devices is None:
             config.devices = range(torch.cuda.device_count())
-
+        print("CONFIG DEVICES", config.devices)
+        print("CONFIG NUM NODES", config.num_nodes)
         init_process_group_portsafe(
-            "nccl" if len(config.devices) == config.num_nodes else "gloo",
+            "nccl" if torch.cuda.is_available() else "gloo",
             rank=config.rank,
             world_size=config.num_nodes,
         )
@@ -73,8 +82,6 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
     try:
         config.rank = rank
 
-        import importlib.util, sys, os
-
         # inside each worker
         if isinstance(config.strategy, str) and os.path.exists(config.strategy):
             import importlib.util
@@ -85,7 +92,6 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
             config.strategy = mod.STRATEGY
-        print(config.strategy)
 
         patch_collectives()
 

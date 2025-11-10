@@ -9,6 +9,7 @@ from torch.profiler import (
 )
 from torch.utils.data import DataLoader
 import numpy as np
+import os
 
 import copy
 from typing import Union, Callable
@@ -156,7 +157,6 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
             return x.numel()
 
         self.strategy.zero_grad()
-
         grad_accumulation_steps = self.batch_size // self.minibatch_size
         assert (
             grad_accumulation_steps >= 1
@@ -310,7 +310,7 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
                     max_steps=self.max_steps,
                     strategy=self.strategy,
                     train_node=self,
-                    run_name=self.kwargs.get("run_name", None),
+                    run_name=self.kwargs.get("run_name", f"run_{os.getpid()}"),
                 )
 
         while self.local_step < self.max_steps:

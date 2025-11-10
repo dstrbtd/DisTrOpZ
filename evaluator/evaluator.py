@@ -1,20 +1,28 @@
 import argparse, os, json, subprocess, hashlib, tempfile, traceback, bittensor as bt
-from influxdb_client import InfluxDBClient, Point
+from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 import requests
+import datetime
 import re
 
 # --- Config ---
-SANDBOX_IMAGE = "distropz-sandbox"
-DB_URI = os.getenv("DB_URI")  # e.g. postgres://user:pass@db:5432/distropz
+SANDBOX_IMAGE = "distropz_sandbox"
 MAX_RUNTIME = 900  # seconds
+INFLUXDB_URL = os.getenv("INFLUXDB_URL")
+INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN")
+INFLUXDB_ORG = os.getenv("INFLUXDB_ORG")
+INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET")
+INFLUXDB_MEASUREMENT = "distropz_metrics"
+
+influx = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
+write_api = influx.write_api()
 
 
 # ------------------------------------------------------
 # 1. Validate the metrics schema and sanity bounds
 # ------------------------------------------------------
 def validate_metrics(metrics):
-    required = {"throughput": int, "loss": (int, float), "comm": int}
+    required = {"throughput": int, "loss": (int, float), "communication": int}
     for key, expected_type in required.items():
         if key not in metrics:
             raise ValueError(f"Missing key: {key}")
@@ -25,16 +33,31 @@ def validate_metrics(metrics):
         raise ValueError("throughput out of range")
     if not (0.0 <= metrics["loss"] < 1e6):
         raise ValueError("loss out of range")
-    if not (0 <= metrics["comm"] < 10**12):
-        raise ValueError("comm out of range")
+    if not (0 <= metrics["communication"] < 10**12):
+        raise ValueError("communication out of range")
     return metrics
 
 
 # ------------------------------------------------------
 # 2. Execute untrusted miner gist inside sandbox container
 # ------------------------------------------------------
-def run_in_sandbox(gist_path):
+def run_in_sandbox(gist_path, config):
     # Install docker on something other than runpod
+    env = os.environ.copy()
+    env.update(
+        {
+            # "MASTER_ADDR": "127.0.0.1",
+            # "MASTER_PORT": "12355",
+            # "NCCL_IB_DISABLE": "1",
+            # "NCCL_SOCKET_IFNAME": "lo",
+            # "NCCL_ASYNC_ERROR_HANDLING": "1",
+            # " NCCL_P2P_DISABLE": "1ß"
+            "NUM_NODES": str(config.number_of_nodes),
+            "MAX_STEPS": str(config.max_steps),
+            "DATASET": config.dataset,
+            "MODEL_SIZE": config.model_size,
+        }
+    )
     cmd = [
         "docker",
         "run",
@@ -46,50 +69,76 @@ def run_in_sandbox(gist_path):
         f"{gist_path}:/sandbox/strategy.py:ro",
         SANDBOX_IMAGE,
     ]
+    cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
+    # cmd = ["python", "-c", "print('Hello from subprocess')"]
+    # try:
+    #     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=MAX_RUNTIME, env=env)
+    # except subprocess.TimeoutExpired:
+    #     raise TimeoutError("Sandbox timed out")
+
+    # if proc.returncode != 0:
+    #     raise RuntimeError(f"Sandbox failed: {proc.stderr}")
+
+    # try:
+    #     metrics = json.loads(proc.stdout.strip().split("\n")[-1])
+    # except json.JSONDecodeError:
+    #     raise ValueError(f"Invalid JSON output: {proc.stdout[:200]}")
+
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,  # line-buffered
+        universal_newlines=True,
+        env=env,
+    )
+
+    full_output = []
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=MAX_RUNTIME)
+        for line in process.stdout:
+            print(line, end="")  # stream to your terminal in real-time
+            full_output.append(line)
+        process.wait(timeout=None)
     except subprocess.TimeoutExpired:
+        process.kill()
         raise TimeoutError("Sandbox timed out")
 
-    if proc.returncode != 0:
-        raise RuntimeError(f"Sandbox failed: {proc.stderr}")
+    if process.returncode != 0:
+        tail = "".join(full_output[-50:])  # last lines for context
+        raise RuntimeError(f"Sandbox failed (rc={process.returncode}):\n{tail}")
 
-    try:
-        metrics = json.loads(proc.stdout.strip())
-    except json.JSONDecodeError:
-        raise ValueError(f"Invalid JSON output: {proc.stdout[:200]}")
+    # parse only the final JSON line
+    metrics = json.loads(full_output[-1].strip() if full_output else "")
 
     if "error" in metrics:
         raise RuntimeError(f"Sandbox error: {metrics['error']}")
+
     return validate_metrics(metrics)
 
 
 # ------------------------------------------------------
 # 3. Insert verified metrics into DB (trusted context)
 # ------------------------------------------------------
-def log_to_db(hotkey, metrics):
-    conn = psycopg2.connect(DB_URI)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO validator_scores (hotkey, throughput, loss, comm)
-        VALUES (%s, %s, %s, %s)
-        ON CONFLICT (hotkey) DO UPDATE
-        SET throughput = EXCLUDED.throughput,
-            loss = EXCLUDED.loss,
-            comm = EXCLUDED.comm;
-        """,
-        (hotkey, metrics["throughput"], metrics["loss"], metrics["comm"]),
+def log_to_db(hotkey, metrics, config):
+    point = (
+        Point(INFLUXDB_MEASUREMENT)
+        .tag("number_of_nodes", config.number_of_nodes)
+        .tag("max_steps", config.max_steps)
+        .tag("model_size", config.model_size)
+        .tag("dataset", config.dataset)
+        .tag("hotkey", hotkey)
+        .time(datetime.datetime.now(datetime.timezone.utc), WritePrecision.NS)
     )
-    conn.commit()
-    cur.close()
-    conn.close()
+    for k, v in metrics.items():
+        point.field(k, v)
+    write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=point)
 
 
 # -------------------------------------------------------------------------------
 # 4. Validate a single miner: fetch gist, verify hash, run sandbox, log results
 # -------------------------------------------------------------------------------
-def validate_miner(hotkey, gist_url, expected_hash):
+def validate_miner(hotkey, gist_url, expected_hash, config):
     """Fetch gist, verify hash, run sandbox, log results"""
     bt.logging.info(f"Evaluating miner {hotkey}")
 
@@ -113,7 +162,7 @@ def validate_miner(hotkey, gist_url, expected_hash):
     code = fileinfo["content"]
 
     # Verify hash
-    actual_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    actual_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
     if actual_hash != expected_hash:
         raise ValueError(
             f"Hash mismatch! expected {expected_hash[:8]}, got {actual_hash[:8]}"
@@ -124,9 +173,15 @@ def validate_miner(hotkey, gist_url, expected_hash):
         tmp.write(code)
         tmp_path = tmp.name
 
+    path = "/sandbox/sandbox.py"
+    os.makedirs(os.path.dirname(path), exist_ok=True)  # no-op if /root exists
+    with open(path, "w") as f:
+        f.write(code)
+
     try:
-        metrics = run_in_sandbox(tmp_path)
-        # log_to_db(hotkey, metrics)
+        bt.logging.success(f"✅ Run {path} in sandbox")
+        metrics = run_in_sandbox(tmp_path, config)
+        log_to_db(hotkey, metrics, config)
         bt.logging.success(f"✅ Miner {hotkey}: {metrics}")
         return metrics
     except Exception as e:
@@ -151,7 +206,7 @@ def main():
     parser.add_argument(
         "--max_steps", type=int, default=10000, help="Maximum number of steps to test"
     )
-    parser.add_argument("--mode_size", default="tiny", help="NanoGPT model size")
+    parser.add_argument("--model_size", default="large", help="NanoGPT model size")
     parser.add_argument("--dataset", default="shakespeare", help="Dataset name")
     parser.add_argument(
         "--output_dir", type=str, default="results", help="Results directory"
@@ -179,7 +234,7 @@ def main():
 
     for uid, hotkey in enumerate(metagraph.hotkeys):
         uid = 3
-        hotkey = [metagraph.hotkeys[3]]
+        hotkey = metagraph.hotkeys[3]
         bt.logging.info(f"🔍 Checking miner UID={uid} hotkey={hotkey}")
 
         try:
@@ -193,13 +248,16 @@ def main():
             bt.logging.info(f"Found gist: {gist_url}")
 
             # verify and save
-            hotkey_metrics = validate_miner(hotkey, gist_url, sha)
+            hotkey_metrics = validate_miner(hotkey, gist_url, sha, config)
 
             metrics[hotkey] = hotkey_metrics
             bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
 
         except Exception as e:
             bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
+
+        finally:
+            break
 
     # save results
     out_path = os.path.join(

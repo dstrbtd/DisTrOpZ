@@ -64,7 +64,7 @@ def main():
 
     digest = sha256_file(config.script_path)
     gist_url = create_gist(config.script_path, token, config.script_desc)
-    # gist_url = "https://gist.github.com/KMFODA/547bb877893319071d6e92f4892f8986"
+
     bt.logging.info(f"✅ Gist: {gist_url}\n🔒 SHA256: {digest}")
 
     if not config.no_commit:
