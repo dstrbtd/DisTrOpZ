@@ -216,7 +216,6 @@ class Trainer:
 
         manager = mp.Manager()
         result_queue = manager.Queue()
-
         mp.spawn(
             _worker,
             args=(self.config, result_queue),
@@ -224,7 +223,6 @@ class Trainer:
             start_method="spawn",
             join=True,
         )
-
         model_states, metrics_list, comm = {}, [], []
         prof_agg = defaultdict(lambda: {"count": 0, "bytes": 0})
         for _ in range(self.config.num_nodes):

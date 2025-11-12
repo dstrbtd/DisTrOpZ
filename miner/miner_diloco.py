@@ -462,5 +462,5 @@ STRATEGY = DiLoCoStrategy(
         "cosine_anneal": True,
     },
     max_norm=1.0,
-    H=5,
+    H=50,
 )

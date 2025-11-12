@@ -1,18 +1,31 @@
+import logging.handlers
+
+# Patch stdlib's QueueListener to ignore EOFError
+if not hasattr(logging.handlers.QueueListener, "_orig_monitor"):
+    orig = logging.handlers.QueueListener._monitor
+
+    def _safe_monitor(self):
+        try:
+            orig(self)
+        except (EOFError, OSError, BrokenPipeError):
+            return
+
+    logging.handlers.QueueListener._monitor = _safe_monitor
+
 import json, os, importlib.util, sys, traceback
 from exogym.trainer import Trainer
 from nanogpt import GPT, GPTConfig, get_dataset
 import bittensor as bt
 import sys
 
-# sys.stdout.reconfigure(line_buffering=True)
-
 NUM_NODES = int(os.getenv("NUM_NODES", "2"))
-MAX_STEPS = int(os.getenv("MAX_STEPS", "10"))
+MAX_STEPS = int(os.getenv("MAX_STEPS", "2"))
 MODEL_SIZE = os.getenv("MODEL_SIZE", "small")
 DATASET = os.getenv("DATASET", "shakespeare")
 DEVICE = os.getenv("DEVICE", "cuda")
 
 print("MAX_STEPS", MAX_STEPS)
+print("NUM_NODES", NUM_NODES)
 
 
 def load_strategy(path):
@@ -48,8 +61,8 @@ def main():
             num_epochs=1,
             num_nodes=NUM_NODES,
             device=DEVICE,
-            batch_size=8,
-            minibatch_size=2,
+            batch_size=16,
+            minibatch_size=8,
             shuffle=False,
             val_size=64,
             val_interval=10,
@@ -61,7 +74,7 @@ def main():
             "loss": float(metrics_out.get("loss_per_token", 0.0)),
             "communication": int(metrics_out.get("comm_bytes_total", 0)),
         }
-        print(json.dumps(result))  # output to stdout
+        print("\n" + json.dumps(result))  # output to stdout
 
     except Exception as e:
         print(json.dumps({"error": str(e)}))

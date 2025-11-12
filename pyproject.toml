@@ -43,7 +43,8 @@ dependencies = [
     "matplotlib>=3.5.0",
     "psutil>=5.8.0",
     "bittensor==9.10.1",
-    "influxdb-client==1.48.0"
+    "influxdb-client==1.48.0",
+    "bittensor-cli==9.11.2"
 ]
 
 [project.urls]

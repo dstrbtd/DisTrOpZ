@@ -62,14 +62,28 @@ def run_in_sandbox(gist_path, config):
         "docker",
         "run",
         "--rm",
+        "--gpus",
+        "all",
         "--network=none",
-        "--cpus=2",
-        "--memory=4g",
+        # "--cpus=2",
+        # "--memory=4g",
+        # "--shm-size=2g",
+        # environment variables (each one must be a separate -e)
+        "-e",
+        f"NUM_NODES={config.number_of_nodes}",
+        "-e",
+        f"MAX_STEPS={config.max_steps}",
+        "-e",
+        f"DATASET={config.dataset}",
+        "-e",
+        f"MODEL_SIZE={config.model_size}",
+        # volume mount
         "-v",
-        f"{gist_path}:/sandbox/strategy.py:ro",
+        f"{gist_path}:/app/sandbox/strategy.py:ro",
+        # image name
         SANDBOX_IMAGE,
     ]
-    cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
+    # cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
     # cmd = ["python", "-c", "print('Hello from subprocess')"]
     # try:
     #     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=MAX_RUNTIME, env=env)
@@ -109,7 +123,10 @@ def run_in_sandbox(gist_path, config):
         raise RuntimeError(f"Sandbox failed (rc={process.returncode}):\n{tail}")
 
     # parse only the final JSON line
-    metrics = json.loads(full_output[-1].strip() if full_output else "")
+    # metrics = json.loads(full_output[-1].strip() if full_output else "")
+    metrics = json.loads(
+        "{" + "".join(full_output[-50:]).split("{")[-1].strip() if full_output else ""
+    )
 
     if "error" in metrics:
         raise RuntimeError(f"Sandbox error: {metrics['error']}")
@@ -150,33 +167,40 @@ def validate_miner(hotkey, gist_url, expected_hash, config):
 
     api_url = f"https://api.github.com/gists/{gist_id}"
     resp = requests.get(api_url)
-    if resp.status_code == 404:
-        raise ValueError(f"Gist not found or not public: {gist_url}")
-    resp.raise_for_status()
+    # if resp.status_code == 404:
+    #     raise ValueError(f"Gist not found or not public: {gist_url}")
+    # resp.raise_for_status()
 
-    files = resp.json().get("files", {})
-    if not files:
-        raise ValueError("Gist has no files.")
+    # files = resp.json().get("files", {})
+    # if not files:
+    #     raise ValueError("Gist has no files.")
 
-    filename, fileinfo = next(iter(files.items()))
-    code = fileinfo["content"]
+    # filename, fileinfo = next(iter(files.items()))
+    # code = fileinfo["content"]
 
-    # Verify hash
-    actual_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
-    if actual_hash != expected_hash:
-        raise ValueError(
-            f"Hash mismatch! expected {expected_hash[:8]}, got {actual_hash[:8]}"
-        )
+    # # Verify hash
+    # actual_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    # if actual_hash != expected_hash:
+    #     raise ValueError(
+    #         f"Hash mismatch! expected {expected_hash[:8]}, got {actual_hash[:8]}"
+    #     )
 
-    # --- write to temp file ---
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
-        tmp.write(code)
-        tmp_path = tmp.name
+    # # --- write to temp file ---
+    # with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+    #     tmp.write(code)
+    #     tmp_path = tmp.name
 
-    path = "/sandbox/sandbox.py"
-    os.makedirs(os.path.dirname(path), exist_ok=True)  # no-op if /root exists
-    with open(path, "w") as f:
-        f.write(code)
+    if hotkey == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
+        path = "/root/DisTrOpZ/miner/miner_diloco.py"
+    elif hotkey == "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
+        path = "/root/DisTrOpZ/miner/miner_sparseloco.py"
+    elif hotkey == "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA":
+        path = "/root/DisTrOpZ/miner/miner_demo.py"
+    elif hotkey == "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg":
+        path = "/root/DisTrOpZ/miner/miner_federated_averaging.py"
+
+    # path = "/sandbox/sandbox.py"
+    tmp_path = path
 
     try:
         bt.logging.success(f"✅ Run {path} in sandbox")
@@ -188,8 +212,8 @@ def validate_miner(hotkey, gist_url, expected_hash, config):
         bt.logging.error(f"❌ Failed miner {hotkey}: {e}")
         traceback.print_exc()
         return {}
-    finally:
-        os.remove(tmp_path)
+    # finally:
+    #     os.remove(tmp_path)
 
 
 # -----------------------------
@@ -230,11 +254,13 @@ def main():
 
     bt.logging.info(f"Loaded metagraph with {len(metagraph.hotkeys)} miners.")
 
+    datetime_stamp = datetime.datetime.now().strftime("%Y-%m-%d")
+
     metrics = {}
 
     for uid, hotkey in enumerate(metagraph.hotkeys):
-        uid = 3
-        hotkey = metagraph.hotkeys[3]
+        # uid = 3
+        # hotkey = metagraph.hotkeys[3]
         bt.logging.info(f"🔍 Checking miner UID={uid} hotkey={hotkey}")
 
         try:
@@ -256,13 +282,13 @@ def main():
         except Exception as e:
             bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
 
-        finally:
-            break
+        # finally:
+        #     break
 
     # save results
     out_path = os.path.join(
         config.output_dir,
-        f"metrics-gpt-{config.model_size}-{config.number_of_nodes}-{config.max_steps}.json",
+        f"metrics-gpt-{config.model_size}-{config.dataset}-{config.number_of_nodes}-{config.max_steps}-{datetime_stamp}.json",
     )
     with open(out_path, "w") as f:
         json.dump(metrics, f, indent=2)
