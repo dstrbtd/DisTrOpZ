@@ -3,15 +3,11 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "exogym"
-version = "0.1.0a2"
-description = "EXO Gym: Open source framework for simulated distributed training methods"
+name = "distropz"
+version = "0.0.1"
+description = "DisTrOpZ: Distritubed Training Over The Internet Optimization"
 readme = "README.md"
 license = "MIT"
-authors = [
-    {name = "Matt Beton", email = "matthew.beton@gmail.com"}
-]
-keywords = ["distributed training", "machine learning", "deep learning", "simulation", "federated learning"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -48,9 +44,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/exo-explore/exogym"
-Repository = "https://github.com/exo-explore/exogym"
-Issues = "https://github.com/exo-explore/exogym/issues"
+Homepage = "https://github.com/dstrbtd/DisTrOpZ"
+Repository = "https://github.com/dstrbtd/DisTrOpZ"
+Issues = "https://github.com/dstrbtd/DisTrOpZ/issues"
 
 [tool.setuptools.packages.find]
 include = ["exogym*", "miner*", "validator*"]

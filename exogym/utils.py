@@ -16,6 +16,7 @@ def init_process_group_portsafe(
         os.environ.update(
             {
                 "GLOO_SOCKET_IFNAME": "lo0",
+                # "GLOO_SOCKET_IFNAME": "lo",
             }
         )
 

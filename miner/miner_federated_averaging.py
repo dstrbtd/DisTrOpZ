@@ -474,10 +474,10 @@ class FedAvgStrategy(CommunicateOptimizeStrategy):
 
 
 STRATEGY = FedAvgStrategy(
-    inner_optim=OptimSpec(torch.optim.AdamW, lr=0.0004),
+    inner_optim=OptimSpec(torch.optim.AdamW, lr=0.001),
     lr_scheduler="lambda_cosine",
     lr_scheduler_kwargs={
-        "warmup_steps": 1000,
+        "warmup_steps": 500,
         "cosine_anneal": True,
     },
     island_size=5,

@@ -42,34 +42,35 @@ def _build_connection(config: TrainConfig):
         else:
             config.device = "cpu"
 
-    # initialize the process group
-    if config.device == "cuda":
-        # If we haven't specified devices, use all devices.
-        if config.devices is None:
-            config.devices = range(torch.cuda.device_count())
-        print("CONFIG DEVICES", config.devices)
-        print("CONFIG NUM NODES", config.num_nodes)
-        init_process_group_portsafe(
-            "nccl" if torch.cuda.is_available() else "gloo",
-            rank=config.rank,
-            world_size=config.num_nodes,
-        )
-        config.device = torch.device(
-            f"cuda:{config.devices[config.rank % len(config.devices)]}"
-        )
-        torch.cuda.set_device(config.device)
-    elif config.device == "cpu":
-        init_process_group_portsafe(
-            "gloo", rank=config.rank, world_size=config.num_nodes
-        )
-        config.device = torch.device("cpu")
-    elif config.device == "mps":
-        init_process_group_portsafe(
-            "gloo", rank=config.rank, world_size=config.num_nodes
-        )
-        config.device = torch.device("mps")
-    else:
-        raise ValueError(f"Invalid device type: {config.device}")
+    init_process_group_portsafe("gloo", rank=config.rank, world_size=config.num_nodes)
+    # # initialize the process group
+    # if config.device == "cuda":
+    #     # If we haven't specified devices, use all devices.
+    #     if config.devices is None:
+    #         config.devices = range(torch.cuda.device_count())
+    #     print("CONFIG DEVICES", config.devices)
+    #     print("CONFIG NUM NODES", config.num_nodes)
+    #     init_process_group_portsafe(
+    #         "nccl" if torch.cuda.is_available() else "gloo",
+    #         rank=config.rank,
+    #         world_size=config.num_nodes,
+    #     )
+    #     config.device = torch.device(
+    #         f"cuda:{config.devices[config.rank % len(config.devices)]}"
+    #     )
+    #     torch.cuda.set_device(config.device)
+    # elif config.device == "cpu":
+    #     init_process_group_portsafe(
+    #         "gloo", rank=config.rank, world_size=config.num_nodes
+    #     )
+    #     config.device = torch.device("cpu")
+    # elif config.device == "mps":
+    #     init_process_group_portsafe(
+    #         "gloo", rank=config.rank, world_size=config.num_nodes
+    #     )
+    #     config.device = torch.device("mps")
+    # else:
+    #     raise ValueError(f"Invalid device type: {config.device}")
 
     print(f"Rank {config.rank} using device {config.device}")
 
@@ -201,6 +202,8 @@ class Trainer:
             dataloader_kwargs=dataloader_kwargs or {},
             kwargs=kwargs,
         )
+        print("config")
+        print(self.config)
 
         # Auto-detect minibatch_size if not provided
         if minibatch_size is None:

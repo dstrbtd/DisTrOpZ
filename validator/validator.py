@@ -6,9 +6,7 @@ import numpy as np
 
 def fetch_metrics(client, bucket, org, measurement):
     query = f'from(bucket:"{bucket}") |> range(start: -24h) |> filter(fn: (r) => r["_measurement"] == "{measurement}")'
-    # query = f'from(bucket:"{bucket}") |> range(start: -200h) |> filter(fn: (r) => r["_measurement"] == "{measurement}")'
     tables = client.query_api().query(org=org, query=query)
-    breakpoint()
     data = []
     for table in tables:
         for record in table.records:
@@ -45,7 +43,7 @@ def normalize(df, columns, invert_loss=True):
 def main():
     parser = argparse.ArgumentParser(description="Simple validator script")
     parser.add_argument("--netuid", type=int, default=220)
-    parser.add_argument("--influxdb.measurement", default="distributed_eval")
+    parser.add_argument("--influxdb.measurement", default="distropz_metrics")
     parser.add_argument("--influxdb.bucket", required=True)
     parser.add_argument("--influxdb.org", required=True)
     parser.add_argument("--influxdb.url", default="http://localhost:8086")

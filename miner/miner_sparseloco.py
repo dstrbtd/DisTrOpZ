@@ -968,12 +968,24 @@ class SparseLoCo(torch.optim.SGD):
 
 
 STRATEGY = DiLoCoStrategy(
-    optim_spec=OptimSpec(SparseLoCo, lr=0.0004),
+    optim_spec=OptimSpec(torch.optim.AdamW, lr=0.001),
+    outer_optim_spec=OptimSpec(
+        SparseLoCo,
+        lr=1,
+        use_sign=False,
+        weight_decay=0.1,
+        top_k=128,
+        chunk_size=64,
+        use_quantization=True,
+        quantization_bins=4,
+        quantization_range=6,
+        momentum=0.95,
+    ),
     lr_scheduler="lambda_cosine",
     lr_scheduler_kwargs={
-        "warmup_steps": 1000,
+        "warmup_steps": 500,
         "cosine_anneal": True,
     },
     max_norm=1.0,
-    H=50,
+    H=15,
 )

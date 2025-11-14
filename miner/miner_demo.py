@@ -918,9 +918,10 @@ class DeMoStrategy(Strategy):
 
 
 STRATEGY = DeMoStrategy(
+    lr=0.001,
     lr_scheduler="lambda_cosine",
     lr_scheduler_kwargs={
-        "warmup_steps": 1000,
+        "warmup_steps": 500,
         "cosine_anneal": True,
     },
 )

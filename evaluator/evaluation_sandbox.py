@@ -40,6 +40,8 @@ def load_strategy(path):
 def main():
     # Miner script is mounted at /sandbox/strategy.py
     script_path = "sandbox/strategy.py"
+    script_path = "DisTrOpZ/miner/miner_sparseloco.py"
+    # script_path = "DisTrOpZ/miner/miner_diloco.py"
     try:
         strategy = script_path
         train_dataset, _ = get_dataset(
@@ -61,10 +63,10 @@ def main():
             num_epochs=1,
             num_nodes=NUM_NODES,
             device=DEVICE,
-            batch_size=16,
+            batch_size=256,
             minibatch_size=8,
             shuffle=False,
-            val_size=64,
+            val_size=256,
             val_interval=10,
         )
 

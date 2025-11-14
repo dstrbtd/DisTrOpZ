@@ -14,9 +14,6 @@ INFLUXDB_ORG = os.getenv("INFLUXDB_ORG")
 INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET")
 INFLUXDB_MEASUREMENT = "distropz_metrics"
 
-influx = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
-write_api = influx.write_api()
-
 
 # ------------------------------------------------------
 # 1. Validate the metrics schema and sanity bounds
@@ -43,21 +40,6 @@ def validate_metrics(metrics):
 # ------------------------------------------------------
 def run_in_sandbox(gist_path, config):
     # Install docker on something other than runpod
-    env = os.environ.copy()
-    env.update(
-        {
-            # "MASTER_ADDR": "127.0.0.1",
-            # "MASTER_PORT": "12355",
-            # "NCCL_IB_DISABLE": "1",
-            # "NCCL_SOCKET_IFNAME": "lo",
-            # "NCCL_ASYNC_ERROR_HANDLING": "1",
-            # " NCCL_P2P_DISABLE": "1ß"
-            "NUM_NODES": str(config.number_of_nodes),
-            "MAX_STEPS": str(config.max_steps),
-            "DATASET": config.dataset,
-            "MODEL_SIZE": config.model_size,
-        }
-    )
     cmd = [
         "docker",
         "run",
@@ -67,7 +49,7 @@ def run_in_sandbox(gist_path, config):
         "--network=none",
         # "--cpus=2",
         # "--memory=4g",
-        # "--shm-size=2g",
+        "--shm-size=8g",
         # environment variables (each one must be a separate -e)
         "-e",
         f"NUM_NODES={config.number_of_nodes}",
@@ -83,20 +65,6 @@ def run_in_sandbox(gist_path, config):
         # image name
         SANDBOX_IMAGE,
     ]
-    # cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
-    # cmd = ["python", "-c", "print('Hello from subprocess')"]
-    # try:
-    #     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=MAX_RUNTIME, env=env)
-    # except subprocess.TimeoutExpired:
-    #     raise TimeoutError("Sandbox timed out")
-
-    # if proc.returncode != 0:
-    #     raise RuntimeError(f"Sandbox failed: {proc.stderr}")
-
-    # try:
-    #     metrics = json.loads(proc.stdout.strip().split("\n")[-1])
-    # except json.JSONDecodeError:
-    #     raise ValueError(f"Invalid JSON output: {proc.stdout[:200]}")
 
     process = subprocess.Popen(
         cmd,
@@ -105,7 +73,7 @@ def run_in_sandbox(gist_path, config):
         text=True,
         bufsize=1,  # line-buffered
         universal_newlines=True,
-        env=env,
+        # env=env,
     )
 
     full_output = []
@@ -137,7 +105,7 @@ def run_in_sandbox(gist_path, config):
 # ------------------------------------------------------
 # 3. Insert verified metrics into DB (trusted context)
 # ------------------------------------------------------
-def log_to_db(hotkey, metrics, config):
+def log_to_db(write_api, hotkey, metrics, config):
     point = (
         Point(INFLUXDB_MEASUREMENT)
         .tag("number_of_nodes", config.number_of_nodes)
@@ -155,7 +123,7 @@ def log_to_db(hotkey, metrics, config):
 # -------------------------------------------------------------------------------
 # 4. Validate a single miner: fetch gist, verify hash, run sandbox, log results
 # -------------------------------------------------------------------------------
-def validate_miner(hotkey, gist_url, expected_hash, config):
+def validate_miner(write_api, hotkey, gist_url, expected_hash, config):
     """Fetch gist, verify hash, run sandbox, log results"""
     bt.logging.info(f"Evaluating miner {hotkey}")
 
@@ -190,7 +158,9 @@ def validate_miner(hotkey, gist_url, expected_hash, config):
     #     tmp.write(code)
     #     tmp_path = tmp.name
 
-    if hotkey == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
+    if hotkey != "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
+        raise ValueError("Gist has no files.")
+    elif hotkey == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
         path = "/root/DisTrOpZ/miner/miner_diloco.py"
     elif hotkey == "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
         path = "/root/DisTrOpZ/miner/miner_sparseloco.py"
@@ -205,7 +175,7 @@ def validate_miner(hotkey, gist_url, expected_hash, config):
     try:
         bt.logging.success(f"✅ Run {path} in sandbox")
         metrics = run_in_sandbox(tmp_path, config)
-        log_to_db(hotkey, metrics, config)
+        log_to_db(write_api, hotkey, metrics, config)
         bt.logging.success(f"✅ Miner {hotkey}: {metrics}")
         return metrics
     except Exception as e:
@@ -238,12 +208,24 @@ def main():
     parser.add_argument(
         "--netuid", type=int, default=178, help="Bittensor network UID."
     )
+    parser.add_argument("--influxdb.measurement", default="distropz_metrics")
+    parser.add_argument("--influxdb.bucket", required=True)
+    parser.add_argument("--influxdb.org", required=True)
+    parser.add_argument("--influxdb.url", default="http://localhost:8086")
+    parser.add_argument(
+        "--influxdb.token", help="InfluxDB token (or set INFLUXDB_TOKEN)"
+    )
 
     bt.wallet.add_args(parser)
     bt.subtensor.add_args(parser)
     config = bt.config(parser)
     config.subtensor.network = "test"
     config.subtensor.chain_endpoint = "wss://test.finney.opentensor.ai:443/"
+
+    influx = InfluxDBClient(
+        url=config.influxdb.url, token=config.influxdb.token, org=config.influxdb.org
+    )
+    write_api = influx.write_api()
 
     bt.logging.setLevel("INFO")
     bt.logging.info(config)
@@ -255,6 +237,10 @@ def main():
     bt.logging.info(f"Loaded metagraph with {len(metagraph.hotkeys)} miners.")
 
     datetime_stamp = datetime.datetime.now().strftime("%Y-%m-%d")
+    out_path = os.path.join(
+        config.output_dir,
+        f"metrics-gpt-{config.model_size}-{config.dataset}-{config.number_of_nodes}-{config.max_steps}-{datetime_stamp}.json",
+    )
 
     metrics = {}
 
@@ -274,10 +260,13 @@ def main():
             bt.logging.info(f"Found gist: {gist_url}")
 
             # verify and save
-            hotkey_metrics = validate_miner(hotkey, gist_url, sha, config)
+            hotkey_metrics = validate_miner(write_api, hotkey, gist_url, sha, config)
 
             metrics[hotkey] = hotkey_metrics
             bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
+
+            with open(out_path, "w") as f:
+                json.dump(metrics, f, indent=2)
 
         except Exception as e:
             bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
@@ -286,10 +275,6 @@ def main():
         #     break
 
     # save results
-    out_path = os.path.join(
-        config.output_dir,
-        f"metrics-gpt-{config.model_size}-{config.dataset}-{config.number_of_nodes}-{config.max_steps}-{datetime_stamp}.json",
-    )
     with open(out_path, "w") as f:
         json.dump(metrics, f, indent=2)
     bt.logging.success(f"Saved metrics → {out_path}")
