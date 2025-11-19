@@ -1,5 +1,6 @@
 import torch.distributed as dist
 import os
+import datetime
 
 
 def init_process_group_portsafe(
@@ -26,7 +27,12 @@ def init_process_group_portsafe(
     while i < retries:
         try:
             os.environ["MASTER_PORT"] = str(port)
-            dist.init_process_group(backend, rank=rank, world_size=world_size)
+            dist.init_process_group(
+                backend,
+                rank=rank,
+                world_size=world_size,
+                # timeout=datetime.timedelta(120),
+            )
             return
         except Exception as e:
             errors.append(str(e))

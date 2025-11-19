@@ -4,6 +4,7 @@ import torch.nn.utils as nn_utils
 import torch.distributed as dist
 import torch.fft
 from einops import rearrange
+import datetime
 
 from copy import deepcopy
 from dataclasses import dataclass
@@ -410,29 +411,61 @@ class DiLoCoCommunicator(CommunicationModule):
     def communicate(self, model, rank: int, num_nodes: int, local_step: int) -> None:
         """Perform master-worker communication."""
         if num_nodes > 1 and local_step % self.H == 0 and local_step > 0:
-            # First average all models
-            for param in model.parameters():
-                all_reduce(param.data, op=dist.ReduceOp.SUM)
-                param.data /= num_nodes
+            # # First average all models
+            # for param in model.parameters():
+            #     all_reduce(param.data, op=dist.ReduceOp.SUM)
+            #     param.data /= num_nodes
 
-            # Master does outer optimization step
-            if rank == 0 and self.master_model is not None:
-                self.outer_optimizer.zero_grad()
-                self._set_master_grad(model)
-                self.outer_optimizer.step()
-                self._synchronize_master_model(model)
+            # # Master does outer optimization step
+            # if rank == 0 and self.master_model is not None:
+            #     self.outer_optimizer.zero_grad()
+            #     self._set_master_grad(model)
+            #     self.outer_optimizer.step()
+            #     self._synchronize_master_model(model)
 
-            # Broadcast updated parameters
-            for param in model.parameters():
-                broadcast(param.data, src=0)
+            # # Broadcast updated parameters
+            # for param in model.parameters():
+            #     broadcast(param.data, src=0)
+
+            # # Alternative DiLoCo
+            # self.outer_optimizer.zero_grad()
+            # self._set_master_grad(model)
+            # for param in model.parameters():
+            #     all_reduce(param.data, op=dist.ReduceOp.SUM)
+            #     param.data /= num_nodes
+            # self.outer_optimizer.step()
+            # self._synchronize_master_model(model)
+
+            # SparseLoCo
+            self.outer_optimizer.zero_grad()
+            self._set_master_grad(model)
+            self.outer_optimizer.step()
+            self._synchronize_master_model(model)
 
     def _init_node(self, model, rank: int, num_nodes: int) -> None:
         """Initialize master model for rank 0."""
-        if rank == 0:
-            self.master_model = deepcopy(model).to("cpu")
-            for param in self.master_model.parameters():
-                param.requires_grad = True
-            self.outer_optimizer = self.outer_optim_spec.build(self.master_model)
+        self.process_group = dist.new_group(
+            backend="gloo", timeout=datetime.timedelta(60)
+        )
+        # if rank == 0:
+        #     self.master_model = deepcopy(model).to("cpu")
+        #     for param in self.master_model.parameters():
+        #         param.requires_grad = True
+        #     # build outer optimizer with the Gloo group
+        #     self.outer_optimizer = self.outer_optim_spec.cls(
+        #         self.master_model.parameters(),
+        #         process_group=self.process_group,
+        #         **(self.outer_optim_spec.kwargs or {}),
+        #     )
+        self.master_model = deepcopy(model).to("cpu")
+        for param in self.master_model.parameters():
+            param.requires_grad = True
+        # build outer optimizer with the Gloo group
+        self.outer_optimizer = self.outer_optim_spec.cls(
+            self.master_model.parameters(),
+            process_group=self.process_group,
+            **(self.outer_optim_spec.kwargs or {}),
+        )
 
     def _set_master_grad(self, model) -> None:
         """Set gradients on master model based on difference between master and worker models."""

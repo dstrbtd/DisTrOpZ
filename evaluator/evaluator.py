@@ -1,18 +1,15 @@
 import argparse, os, json, subprocess, hashlib, tempfile, traceback, bittensor as bt
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
+import pandas as pd
 import requests
 import datetime
 import re
 
 # --- Config ---
 SANDBOX_IMAGE = "distropz_sandbox"
+INFLUXDB_MEASUREMENT = "mechanism1_metrics"
 MAX_RUNTIME = 900  # seconds
-INFLUXDB_URL = os.getenv("INFLUXDB_URL")
-INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN")
-INFLUXDB_ORG = os.getenv("INFLUXDB_ORG")
-INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET")
-INFLUXDB_MEASUREMENT = "distropz_metrics"
 
 
 # ------------------------------------------------------
@@ -39,32 +36,36 @@ def validate_metrics(metrics):
 # 2. Execute untrusted miner gist inside sandbox container
 # ------------------------------------------------------
 def run_in_sandbox(gist_path, config):
-    # Install docker on something other than runpod
-    cmd = [
-        "docker",
-        "run",
-        "--rm",
-        "--gpus",
-        "all",
-        "--network=none",
-        # "--cpus=2",
-        # "--memory=4g",
-        "--shm-size=8g",
-        # environment variables (each one must be a separate -e)
-        "-e",
-        f"NUM_NODES={config.number_of_nodes}",
-        "-e",
-        f"MAX_STEPS={config.max_steps}",
-        "-e",
-        f"DATASET={config.dataset}",
-        "-e",
-        f"MODEL_SIZE={config.model_size}",
-        # volume mount
-        "-v",
-        f"{gist_path}:/app/sandbox/strategy.py:ro",
-        # image name
-        SANDBOX_IMAGE,
-    ]
+    # # Install docker on something other than runpod
+    # cmd = [
+    #     "docker",
+    #     "run",
+    #     "--rm",
+    #     "--gpus",
+    #     "all",
+    #     "--network=none",
+    #     # "--cpus=2",
+    #     # "--memory=4g",
+    #     "--shm-size=8g",
+    #     # environment variables (each one must be a separate -e)
+    #     "-e",
+    #     f"NUM_NODES={config.number_of_nodes}",
+    #     "-e",
+    #     f"MAX_STEPS={config.max_steps}",
+    #     "-e",
+    #     f"DATASET={config.dataset}",
+    #     "-e",
+    #     f"MODEL_SIZE={config.model_size}",
+    #     # volume mount
+    #     "-v",
+    #     f"{gist_path}:/app/sandbox/strategy.py:ro",
+    #     # image name
+    #     SANDBOX_IMAGE,
+    # ]
+    print(gist_path)
+    cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
+    # cmd = [f"NUM_NODES={config.number_of_nodes}", f"MAX_STEPS={config.max_steps}",f"DATASET={config.dataset}", f"MODEL_SIZE={config.model_size}", "/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
+    # cmd = f"NUM_NODES={config.number_of_nodes} MAX_STEPS={config.max_steps} DATASET={config.dataset} MODEL_SIZE={config.model_size} /root/.dto/bin/python /root/DisTrOpZ/evaluator/evaluation_sandbox.py"
 
     process = subprocess.Popen(
         cmd,
@@ -74,6 +75,12 @@ def run_in_sandbox(gist_path, config):
         bufsize=1,  # line-buffered
         universal_newlines=True,
         # env=env,
+        env={
+            "NUM_NODES": str(config.number_of_nodes),
+            "MAX_STEPS": str(config.max_steps),
+            "DATASET": config.dataset,
+            "MODEL_SIZE": config.model_size,
+        },
     )
 
     full_output = []
@@ -105,25 +112,32 @@ def run_in_sandbox(gist_path, config):
 # ------------------------------------------------------
 # 3. Insert verified metrics into DB (trusted context)
 # ------------------------------------------------------
-def log_to_db(write_api, hotkey, metrics, config):
+def log_to_db(write_api, hotkey, uid, metrics, config, gist_url, current_block):
     point = (
         Point(INFLUXDB_MEASUREMENT)
         .tag("number_of_nodes", config.number_of_nodes)
         .tag("max_steps", config.max_steps)
         .tag("model_size", config.model_size)
         .tag("dataset", config.dataset)
+        .tag("current_block", current_block)
         .tag("hotkey", hotkey)
+        .tag("uid", uid)
+        .tag("gist_url", gist_url)
         .time(datetime.datetime.now(datetime.timezone.utc), WritePrecision.NS)
     )
     for k, v in metrics.items():
         point.field(k, v)
-    write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUXDB_ORG, record=point)
+    write_api.write(
+        bucket=config.influxdb.bucket, org=config.influxdb.org, record=point
+    )
 
 
 # -------------------------------------------------------------------------------
 # 4. Validate a single miner: fetch gist, verify hash, run sandbox, log results
 # -------------------------------------------------------------------------------
-def validate_miner(write_api, hotkey, gist_url, expected_hash, config):
+def validate_miner(
+    write_api, hotkey, uid, gist_url, expected_hash, config, current_block
+):
     """Fetch gist, verify hash, run sandbox, log results"""
     bt.logging.info(f"Evaluating miner {hotkey}")
 
@@ -158,9 +172,9 @@ def validate_miner(write_api, hotkey, gist_url, expected_hash, config):
     #     tmp.write(code)
     #     tmp_path = tmp.name
 
-    if hotkey != "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
-        raise ValueError("Gist has no files.")
-    elif hotkey == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
+    # if hotkey != "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
+    #     raise ValueError("Gist has no files.")
+    if hotkey == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
         path = "/root/DisTrOpZ/miner/miner_diloco.py"
     elif hotkey == "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
         path = "/root/DisTrOpZ/miner/miner_sparseloco.py"
@@ -171,11 +185,15 @@ def validate_miner(write_api, hotkey, gist_url, expected_hash, config):
 
     # path = "/sandbox/sandbox.py"
     tmp_path = path
+    import shutil
+
+    # Copy the file
+    shutil.copy(path, "/root/DisTrOpZ/evaluator/sandbox/strategy.py")
 
     try:
         bt.logging.success(f"✅ Run {path} in sandbox")
         metrics = run_in_sandbox(tmp_path, config)
-        log_to_db(write_api, hotkey, metrics, config)
+        # log_to_db(write_api, hotkey, uid, metrics, config, gist_url, current_block)
         bt.logging.success(f"✅ Miner {hotkey}: {metrics}")
         return metrics
     except Exception as e:
@@ -226,12 +244,14 @@ def main():
         url=config.influxdb.url, token=config.influxdb.token, org=config.influxdb.org
     )
     write_api = influx.write_api()
+    read_api = influx.query_api()
 
     bt.logging.setLevel("INFO")
-    bt.logging.info(config)
-    wallet = bt.wallet(config=config)
+
     subtensor = bt.subtensor(config=config)
     metagraph = subtensor.metagraph(config.netuid)
+    current_block = subtensor.block
+
     os.makedirs(config.output_dir, exist_ok=True)
 
     bt.logging.info(f"Loaded metagraph with {len(metagraph.hotkeys)} miners.")
@@ -243,10 +263,9 @@ def main():
     )
 
     metrics = {}
+    urls = {}
 
     for uid, hotkey in enumerate(metagraph.hotkeys):
-        # uid = 3
-        # hotkey = metagraph.hotkeys[3]
         bt.logging.info(f"🔍 Checking miner UID={uid} hotkey={hotkey}")
 
         try:
@@ -260,8 +279,11 @@ def main():
             bt.logging.info(f"Found gist: {gist_url}")
 
             # verify and save
-            hotkey_metrics = validate_miner(write_api, hotkey, gist_url, sha, config)
+            hotkey_metrics = validate_miner(
+                write_api, hotkey, uid, gist_url, sha, config, current_block
+            )
 
+            urls[hotkey] = gist_url
             metrics[hotkey] = hotkey_metrics
             bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
 
@@ -271,13 +293,42 @@ def main():
         except Exception as e:
             bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
 
-        # finally:
-        #     break
+    df = pd.DataFrame(metrics).T
+
+    metric_names = ["throughput", "loss", "communication"]
+
+    # min-max normalize each metric
+    norm = (df[metric_names] - df[metric_names].min()) / (
+        df[metric_names].max() - df[metric_names].min()
+    )
+
+    df["throughput_norm"] = norm["throughput"]
+    df["loss_norm"] = 1 - norm["loss"]  # lower loss is better
+    df["communication_norm"] = (
+        1 - norm["communication"]
+    )  # lower communication is better
+
+    df["score"] = (
+        (1 / 3) * df["throughput_norm"]
+        + (1 / 3) * df["loss_norm"]
+        + (1 / 3) * df["communication_norm"]
+    )
+
+    for hotkey in metrics.keys():
+        if hotkey in urls:
+            gist_url = urls[hotkey]
+            uid = metagraph.hotkeys.index(
+                "5HdXxbuzWdzw13eamutFwGXX57ycisFxivXzP5ZLtF1FTfF5"
+            )
+            metrics[hotkey]["score"] = df.loc[hotkey, "score"].item()
+            log_to_db(
+                write_api, hotkey, uid, metrics[hotkey], config, gist_url, current_block
+            )
 
     # save results
     with open(out_path, "w") as f:
         json.dump(metrics, f, indent=2)
-    bt.logging.success(f"Saved metrics → {out_path}")
+    bt.logging.success(f"Saved metrics → {out_path} → {current_block}")
 
 
 if __name__ == "__main__":

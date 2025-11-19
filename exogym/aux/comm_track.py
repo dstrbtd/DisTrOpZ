@@ -37,7 +37,7 @@ def patch_collectives():
     dist.reduce = wrap1("reduce", dist.reduce)
     dist.broadcast = wrap1("broadcast", dist.broadcast)
     dist.all_gather = wrap_allgather("all_gather", dist.all_gather)
-    # add scatter/gather/all_to_all if you use them
+    # add scatter/gather/all_to_all if used in the future
 
 
 def comm_bytes():

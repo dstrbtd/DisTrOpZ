@@ -42,35 +42,34 @@ def _build_connection(config: TrainConfig):
         else:
             config.device = "cpu"
 
-    init_process_group_portsafe("gloo", rank=config.rank, world_size=config.num_nodes)
-    # # initialize the process group
-    # if config.device == "cuda":
-    #     # If we haven't specified devices, use all devices.
-    #     if config.devices is None:
-    #         config.devices = range(torch.cuda.device_count())
-    #     print("CONFIG DEVICES", config.devices)
-    #     print("CONFIG NUM NODES", config.num_nodes)
-    #     init_process_group_portsafe(
-    #         "nccl" if torch.cuda.is_available() else "gloo",
-    #         rank=config.rank,
-    #         world_size=config.num_nodes,
-    #     )
-    #     config.device = torch.device(
-    #         f"cuda:{config.devices[config.rank % len(config.devices)]}"
-    #     )
-    #     torch.cuda.set_device(config.device)
-    # elif config.device == "cpu":
-    #     init_process_group_portsafe(
-    #         "gloo", rank=config.rank, world_size=config.num_nodes
-    #     )
-    #     config.device = torch.device("cpu")
-    # elif config.device == "mps":
-    #     init_process_group_portsafe(
-    #         "gloo", rank=config.rank, world_size=config.num_nodes
-    #     )
-    #     config.device = torch.device("mps")
-    # else:
-    #     raise ValueError(f"Invalid device type: {config.device}")
+    # initialize the process group
+    if config.device == "cuda":
+        # If we haven't specified devices, use all devices.
+        if config.devices is None:
+            config.devices = range(torch.cuda.device_count())
+        print("CONFIG DEVICES", config.devices)
+        print("CONFIG NUM NODES", config.num_nodes)
+        init_process_group_portsafe(
+            "nccl" if torch.cuda.is_available() else "gloo",
+            rank=config.rank,
+            world_size=config.num_nodes,
+        )
+        config.device = torch.device(
+            f"cuda:{config.devices[config.rank % len(config.devices)]}"
+        )
+        torch.cuda.set_device(config.device)
+    elif config.device == "cpu":
+        init_process_group_portsafe(
+            "gloo", rank=config.rank, world_size=config.num_nodes
+        )
+        config.device = torch.device("cpu")
+    elif config.device == "mps":
+        init_process_group_portsafe(
+            "gloo", rank=config.rank, world_size=config.num_nodes
+        )
+        config.device = torch.device("mps")
+    else:
+        raise ValueError(f"Invalid device type: {config.device}")
 
     print(f"Rank {config.rank} using device {config.device}")
 
@@ -83,6 +82,10 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
     try:
         config.rank = rank
 
+        patch_collectives()
+
+        _build_connection(config)
+
         # inside each worker
         if isinstance(config.strategy, str) and os.path.exists(config.strategy):
             import importlib.util
@@ -93,10 +96,19 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
             config.strategy = mod.STRATEGY
+        print(config.strategy)
 
-        patch_collectives()
+        # inside each worker
+        if isinstance(config.strategy, str) and os.path.exists(config.strategy):
+            import importlib.util
 
-        _build_connection(config)
+            spec = importlib.util.spec_from_file_location(
+                "miner_module", config.strategy
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            config.strategy = mod.STRATEGY
+        print(config.strategy)
 
         # TODO: Should these happen here or in TrainNode.__init__() ?
         config.model = copy.deepcopy(config.model).to(config.device)

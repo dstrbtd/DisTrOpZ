@@ -1,0 +1,26 @@
+{
+  "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj": {
+    "throughput": 136835,
+    "loss": 9.777614882588386,
+    "communication": 1413759064,
+    "score": 0.5365464194910589
+  },
+  "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw": {
+    "throughput": 135531,
+    "loss": 10.562272582650184,
+    "communication": 731743288,
+    "score": 0.33885347146204875
+  },
+  "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA": {
+    "throughput": 135699,
+    "loss": 10.356258490681649,
+    "communication": 853106776,
+    "score": 0.3378182956094069
+  },
+  "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg": {
+    "throughput": 136781,
+    "loss": 10.09293134868145,
+    "communication": 6538635352,
+    "score": 0.33417953811109435
+  }
+}
