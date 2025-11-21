@@ -66,7 +66,6 @@ def main():
         + "/state.json"
     )
     os.makedirs(state_path.split("/state.json")[0], exist_ok=True)
-    breakpoint()
 
     # Setup influxdb
     token = config.influxdb.token or os.getenv("INFLUXDB_TOKEN")
