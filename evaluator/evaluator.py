@@ -64,8 +64,6 @@ def run_in_sandbox(gist_path, config):
     # ]
     print(gist_path)
     cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
-    # cmd = [f"NUM_NODES={config.number_of_nodes}", f"MAX_STEPS={config.max_steps}",f"DATASET={config.dataset}", f"MODEL_SIZE={config.model_size}", "/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
-    # cmd = f"NUM_NODES={config.number_of_nodes} MAX_STEPS={config.max_steps} DATASET={config.dataset} MODEL_SIZE={config.model_size} /root/.dto/bin/python /root/DisTrOpZ/evaluator/evaluation_sandbox.py"
 
     process = subprocess.Popen(
         cmd,
@@ -74,7 +72,6 @@ def run_in_sandbox(gist_path, config):
         text=True,
         bufsize=1,  # line-buffered
         universal_newlines=True,
-        # env=env,
         env={
             "NUM_NODES": str(config.number_of_nodes),
             "MAX_STEPS": str(config.max_steps),
@@ -98,7 +95,6 @@ def run_in_sandbox(gist_path, config):
         raise RuntimeError(f"Sandbox failed (rc={process.returncode}):\n{tail}")
 
     # parse only the final JSON line
-    # metrics = json.loads(full_output[-1].strip() if full_output else "")
     metrics = json.loads(
         "{" + "".join(full_output[-50:]).split("{")[-1].strip() if full_output else ""
     )
@@ -125,11 +121,14 @@ def log_to_db(write_api, hotkey, uid, metrics, config, gist_url, current_block):
         .tag("gist_url", gist_url)
         .time(datetime.datetime.now(datetime.timezone.utc), WritePrecision.NS)
     )
+    bt.logging.info("Checkpoint 1")
     for k, v in metrics.items():
         point.field(k, v)
+    bt.logging.info("Checkpoint 2")
     write_api.write(
         bucket=config.influxdb.bucket, org=config.influxdb.org, record=point
     )
+    bt.logging.info("Checkpoint 3")
 
 
 # -------------------------------------------------------------------------------
@@ -149,51 +148,56 @@ def validate_miner(
 
     api_url = f"https://api.github.com/gists/{gist_id}"
     resp = requests.get(api_url)
-    # if resp.status_code == 404:
-    #     raise ValueError(f"Gist not found or not public: {gist_url}")
-    # resp.raise_for_status()
+    last_updated_at = resp.json().get("updated_at")
+    # last_updated_at = datetime.datetime.fromisoformat(last_updated_at.replace("Z", "+00:00"))
+    if False:
+        if hotkey == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
+            path = "/root/DisTrOpZ/miner/miner_diloco.py"
+        elif hotkey == "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
+            path = "/root/DisTrOpZ/miner/miner_sparseloco.py"
+        elif hotkey == "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA":
+            path = "/root/DisTrOpZ/miner/miner_demo.py"
+        elif hotkey == "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg":
+            path = "/root/DisTrOpZ/miner/miner_federated_averaging.py"
 
-    # files = resp.json().get("files", {})
-    # if not files:
-    #     raise ValueError("Gist has no files.")
+        # Copy the file
+        import shutil
 
-    # filename, fileinfo = next(iter(files.items()))
-    # code = fileinfo["content"]
+        shutil.copy(path, "/root/DisTrOpZ/evaluator/sandbox/strategy.py")
+        tmp_path = path
+    else:
+        if resp.status_code == 404:
+            raise ValueError(f"Gist not found or not public: {gist_url}")
+        resp.raise_for_status()
 
-    # # Verify hash
-    # actual_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
-    # if actual_hash != expected_hash:
-    #     raise ValueError(
-    #         f"Hash mismatch! expected {expected_hash[:8]}, got {actual_hash[:8]}"
-    #     )
+        files = resp.json().get("files", {})
+        if not files:
+            raise ValueError("Gist has no files.")
 
-    # # --- write to temp file ---
-    # with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
-    #     tmp.write(code)
-    #     tmp_path = tmp.name
+        filename, fileinfo = next(iter(files.items()))
+        code = fileinfo["content"]
 
-    # if hotkey != "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
-    #     raise ValueError("Gist has no files.")
-    if hotkey == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
-        path = "/root/DisTrOpZ/miner/miner_diloco.py"
-    elif hotkey == "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
-        path = "/root/DisTrOpZ/miner/miner_sparseloco.py"
-    elif hotkey == "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA":
-        path = "/root/DisTrOpZ/miner/miner_demo.py"
-    elif hotkey == "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg":
-        path = "/root/DisTrOpZ/miner/miner_federated_averaging.py"
+        # Verify hash
+        actual_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+        if actual_hash != expected_hash:
+            raise ValueError(
+                f"Hash mismatch! expected {expected_hash[:8]}, got {actual_hash[:8]}"
+            )
 
-    # path = "/sandbox/sandbox.py"
-    tmp_path = path
+        # --- write to temp file ---
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(code)
+            tmp_path = tmp.name
+    # Copy the file
     import shutil
 
-    # Copy the file
-    shutil.copy(path, "/root/DisTrOpZ/evaluator/sandbox/strategy.py")
-
+    shutil.copy(tmp_path, "/root/DisTrOpZ/evaluator/sandbox/strategy.py")
+    tmp_path = "/root/DisTrOpZ/evaluator/sandbox/strategy.py"
     try:
-        bt.logging.success(f"✅ Run {path} in sandbox")
+        bt.logging.success(f"✅ Run {tmp_path} in sandbox")
         metrics = run_in_sandbox(tmp_path, config)
-        # log_to_db(write_api, hotkey, uid, metrics, config, gist_url, current_block)
+        metrics["last_update"] = last_updated_at
+        # breakpoint()
         bt.logging.success(f"✅ Miner {hotkey}: {metrics}")
         return metrics
     except Exception as e:
@@ -243,7 +247,7 @@ def main():
     influx = InfluxDBClient(
         url=config.influxdb.url, token=config.influxdb.token, org=config.influxdb.org
     )
-    write_api = influx.write_api()
+    write_api = influx.write_api(write_options=SYNCHRONOUS)
     read_api = influx.query_api()
 
     bt.logging.setLevel("INFO")
@@ -314,16 +318,33 @@ def main():
         + (1 / 3) * df["communication_norm"]
     )
 
+    query = f"""
+    from(bucket: "{config.influxdb.bucket}")
+      |> range(start: -30d)
+      |> filter(fn: (r) => r._measurement == "{INFLUXDB_MEASUREMENT}")
+      |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+    """
+    read_api.query(query)
+    df_query = read_api.query_data_frame(query)
+    df_query = pd.concat(df_query)
+
     for hotkey in metrics.keys():
         if hotkey in urls:
             gist_url = urls[hotkey]
-            uid = metagraph.hotkeys.index(
-                "5HdXxbuzWdzw13eamutFwGXX57ycisFxivXzP5ZLtF1FTfF5"
-            )
-            metrics[hotkey]["score"] = df.loc[hotkey, "score"].item()
+            uid = metagraph.hotkeys.index(hotkey)
+            # breakpoint()
+            metrics[hotkey]["score"] = df.at[hotkey, "score"]
             log_to_db(
                 write_api, hotkey, uid, metrics[hotkey], config, gist_url, current_block
             )
+            bt.logging.info(f"Logged {hotkey} metrics")
+
+    df_query_2 = read_api.query_data_frame(query)
+    df_query_2 = pd.concat(df_query_2)
+    breakpoint()
+
+    df_query_3 = read_api.query_data_frame(query)
+    df_query_3 = pd.concat(df_query_3)
 
     # save results
     with open(out_path, "w") as f:

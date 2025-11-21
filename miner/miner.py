@@ -33,12 +33,12 @@ def commit_to_chain(gist_url, digest, netuid, wallet, subtensor):
 
 def main():
     parser = argparse.ArgumentParser(description="Miner script")
-    parser.add_argument("--script_path", help="Path to strategy .py")
+    parser.add_argument("--script.path", help="Path to strategy .py")
     parser.add_argument(
-        "--script_desc", default="Distributed training strategy submission"
+        "--script.desc", default="Distributed training strategy submission"
     )
     parser.add_argument(
-        "--github-token", help="GitHub token (falls back to $GITHUB_TOKEN)"
+        "--github.token", help="GitHub token (falls back to $GITHUB_TOKEN)"
     )
     parser.add_argument("--no-commit", action="store_true", help="Skip on-chain commit")
     parser.add_argument(
@@ -47,23 +47,30 @@ def main():
     bt.wallet.add_args(parser)
     bt.subtensor.add_args(parser)
     config = bt.config(parser)
-    config.subtensor.network = "test"
-    config.subtensor.chain_endpoint = "wss://test.finney.opentensor.ai:443/"
 
-    token = config.github_token or os.getenv("GITHUB_TOKEN")
+    token = config.github.token or os.getenv("GITHUB_TOKEN")
     if not token:
-        sys.exit("ERROR: Provide --github-token or set GITHUB_TOKEN")
+        raise Exception("ERROR: Provide --github.token or set GITHUB_TOKEN")
 
     bt.logging.setLevel("INFO")
     bt.logging.info(config)
     wallet = bt.wallet(config=config)
     subtensor = bt.subtensor(config=config)
 
-    if not os.path.exists(config.script_path):
-        sys.exit(f"ERROR: {config.script_path} not found")
+    if not subtensor.is_hotkey_registered(
+        netuid=config.netuid,
+        hotkey_ss58=wallet.hotkey.ss58_address,
+    ):
+        bt.logging.error(
+            f"Wallet: {wallet} is not registered on netuid {config.netuid}."
+            f" Please register the hotkey using `btcli subnets register` before trying again"
+        )
 
-    digest = sha256_file(config.script_path)
-    gist_url = create_gist(config.script_path, token, config.script_desc)
+    if not os.path.exists(config.script.path):
+        raise Exception(f"ERROR: {config.script.path} not found")
+
+    digest = sha256_file(config.script.path)
+    gist_url = create_gist(config.script.path, token, config.script.desc)
 
     bt.logging.info(f"✅ Gist: {gist_url}\n🔒 SHA256: {digest}")
 
