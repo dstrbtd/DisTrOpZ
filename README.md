@@ -1,19 +1,23 @@
 <div align="center">
 
 # DisTrOpZ
-SN38 - Mechanism 2
+SN38 - Mechanism 1
 
 
-<img src="docs/imagination.png" alt="EXO Gym" width="50%">
+<img src="assets/imagination.png" alt="EXO Gym" width="50%">
 
 
 ### DisTrOpZ: Distritubed Training Over The Internet Optimization
 
-Inspired by [Exo Gym](https://github.com/exo-explore/gym), DisTrOpZ is a mechanism within Bittensor's SN38 that focuses on incentivising the creation of optimal distributed training algorithims for nodes connected via slow internet speeds.
+</div>
+
+Inspired by [Exo Gym](https://github.com/exo-explore/gym), DisTrOpZ is a mechanism within Bittensor's SN38 that focuses on incentivising the creation of optimal distributed training algorithims for nodes connected via slow internet speeds. Miners compete to try and produce strategies that are more efficient at dsitributed training.
+
+Here we use Exo Gym's definition of a strategy: an abstract class for an optimization strategy, which both defines **how the nodes communicate** with each other and **how model weights are updated**. Typically, a gradient strategy will include an optimizer as well as a communication step. Sometimes (eg. DeMo), the optimizer step is comingled with the communication.
 
 #### How To Run A Miner
 
-Use miner_base.py as your baseline to come up with a distributed training optimizer and communication strategy that can outperform other popular startegies. Once you have an optimal solution, publish it as a gist and commit it to the chain using the following command:
+Use ```miner_base.py``` as your baseline to come up with a distributed training optimizer and communication strategy that can outperform the current top performing strategy. Once you have an optimal solution, publish it as a gist and commit it to the chain using the following command:
 
 </div>
 
@@ -29,11 +33,7 @@ python /root/DisTrOpZ/miner/miner.py
     --github.token <your github token>
 ```
 
-<div align="center">
-
 ##### How To Run A Validator
-
-</div>
 
 ```bash
 python /root/DisTrOpZ/validator/validator.py

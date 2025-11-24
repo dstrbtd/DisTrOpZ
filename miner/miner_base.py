@@ -253,37 +253,6 @@ class Strategy(ABC, LogModule):
         return config
 
 
-class SimpleReduceStrategy(Strategy):
-    def __init__(self, optim_spec=None, max_norm=None, **kwargs):
-        super().__init__(**kwargs)
-
-        self.optim_spec = ensure_optim_spec(optim_spec) or OptimSpec(torch.optim.AdamW)
-
-        self.max_norm = max_norm
-
-    def _init_node(self, model, rank, num_nodes):
-        super()._init_node(model, rank, num_nodes)
-
-        self.optim = self.optim_spec.build(model)
-        self._setup_scheduler()
-
-    def step(self):
-        if self.num_nodes > 1 or True:
-            for param in self.model.parameters():
-                if param.grad is not None:
-                    all_reduce(param.grad)
-                    param.grad.div_(self.num_nodes)
-
-            if self.max_norm:
-                nn_utils.clip_grad_norm_(
-                    self.model.parameters(), max_norm=self.max_norm
-                )
-
-        self.optim.step()
-
-        super().step()
-
-
 # COMMUNICATE OPTIMIZER STRATEGY
 class CommunicationModule(ABC):
     """Abstract base class for communication modules."""

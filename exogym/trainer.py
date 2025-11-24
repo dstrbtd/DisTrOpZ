@@ -6,7 +6,7 @@ from exogym.train_node import TrainNode
 from exogym.strategy import Strategy
 from exogym.common import TrainConfig
 from exogym.aux.utils import print_dataset_size, _average_model_states
-from exogym.aux.comm_track import patch_collectives, comm_bytes
+from DisTrOpZ.exogym.aux.tracker import patch_collectives, comm_bytes
 from exogym.minibatch_probe import find_minibatch_size_isolated
 from exogym.utils import init_process_group_portsafe
 

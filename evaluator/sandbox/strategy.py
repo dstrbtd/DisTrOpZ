@@ -3,16 +3,15 @@ import torch
 import torch.nn.utils as nn_utils
 import torch.distributed as dist
 
-from copy import deepcopy
 from dataclasses import dataclass
 from torch.optim.lr_scheduler import LambdaLR
-from typing import List, Type, Union, Optional, Dict, Any
+from typing import List, Type, Union, Optional, Dict, Any, Set
 from abc import ABC, abstractmethod
 
 from exogym.aux.utils import LogModule
 
 
-# BASE COMMUNICATION
+# COMMUNICATION
 def mps_compatible(func):
     # Wrapper for all_gather which handles tensor_list and tensor
     def all_gather_wrapper(tensor_list, tensor, *args, **kwargs):
@@ -100,7 +99,7 @@ def all_gather(tensor_list, tensor, group=None, async_op=False):
 #     return dist.gather(tensor)
 
 
-# BASE OPTIMIZER SPEC
+# OPTIMIZER
 @dataclass
 class OptimSpec:
     cls: Type[torch.optim.Optimizer] = torch.optim.AdamW
@@ -155,7 +154,7 @@ def ensure_optim_spec(
         raise TypeError(f"Expected str, OptimSpec, or None, got {type(optim)}")
 
 
-# BASE STRATEGY
+# STRATEGY
 class Strategy(ABC, LogModule):
     def __init__(
         self,
@@ -285,7 +284,7 @@ class SimpleReduceStrategy(Strategy):
         super().step()
 
 
-# BASE COMMUNICATE OPTIMIZER STRATEGY
+# COMMUNICATE OPTIMIZER STRATEGY
 class CommunicationModule(ABC):
     """Abstract base class for communication modules."""
 
@@ -371,96 +370,115 @@ class CommunicateOptimizeStrategy(Strategy):
         self._setup_scheduler()
 
 
-# DILOCO COMMUNICATOR
-class DiLoCoCommunicator(CommunicationModule):
+class AveragingCommunicator(CommunicationModule):
     """
-    Communication module for master-worker setup (like DiLoCo).
+    Communication module that averages model parameters across nodes.
+    Used by FedAvg strategies.
     """
 
-    def __init__(
-        self,
-        H: int = 100,
-        outer_optim_spec: Optional[Union[str, OptimSpec]] = None,
-        **kwargs,
-    ):
-        self.H = H
-        self.outer_optim_spec = ensure_optim_spec(
-            outer_optim_spec,
-            OptimSpec(torch.optim.SGD, lr=0.7, nesterov=True, momentum=0.9),
-        )
-        self.strategy = None  # Will be set by CommunicateOptimizeStrategy
-        self.master_model = None
-        self.outer_optimizer = None
+    def __init__(self, island_size: Optional[int] = None, **kwargs):
+        super().__init__(**kwargs)
+        self.island_size = island_size
 
-    def communicate(self, model, rank: int, num_nodes: int, local_step: int) -> None:
-        """Perform master-worker communication."""
-        if num_nodes > 1 and local_step % self.H == 0 and local_step > 0:
-            # First average all models
-            for param in model.parameters():
+    def _select_partners(self, rank: int, num_nodes: int) -> Set[int]:
+        """Select partners for grouped federated averaging."""
+        world_size = num_nodes
+
+        # Only rank 0 creates the island assignments
+        if rank == 0:
+            ranks = list(range(world_size))
+            random.shuffle(ranks)
+        else:
+            ranks = [None] * world_size
+
+        dist.broadcast_object_list(ranks, src=0)
+
+        islands = []
+        island_size = self.island_size if self.island_size is not None else num_nodes
+        for i in range(0, len(ranks), island_size):
+            islands.append(set(ranks[i : i + island_size]))
+
+        # Find which island this rank belongs to
+        my_island = None
+        for island in islands:
+            if rank in island:
+                my_island = island
+                break
+
+        return my_island
+
+    def _average_models(self, model, island_members: Set[int], num_nodes: int) -> None:
+        """Average model parameters across island members."""
+        for param in model.parameters():
+            if len(island_members) == num_nodes:
+                # Full averaging - more efficient
                 all_reduce(param.data, op=dist.ReduceOp.SUM)
                 param.data /= num_nodes
+            else:
+                # Partial averaging using all_gather
+                tensor_list = [torch.zeros_like(param.data) for _ in range(num_nodes)]
+                all_gather(tensor_list, param.data)
 
-            # Master does outer optimization step
-            if rank == 0 and self.master_model is not None:
-                self.outer_optimizer.zero_grad()
-                self._set_master_grad(model)
-                self.outer_optimizer.step()
-                self._synchronize_master_model(model)
+                # Compute average only from ranks in the same island
+                island_tensors = [tensor_list[rank] for rank in island_members]
+                island_average = sum(island_tensors) / len(island_tensors)
 
-            # Broadcast updated parameters
-            for param in model.parameters():
-                broadcast(param.data, src=0)
+                param.data = island_average
 
-    def _init_node(self, model, rank: int, num_nodes: int) -> None:
-        """Initialize master model for rank 0."""
-        if rank == 0:
-            self.master_model = deepcopy(model).to("cpu")
-            for param in self.master_model.parameters():
-                param.requires_grad = True
-            self.outer_optimizer = self.outer_optim_spec.build(self.master_model)
+    def communicate(self, model, rank: int, num_nodes: int, local_step: int) -> None:
+        """Perform averaging communication."""
+        if num_nodes > 1:
+            if self.island_size is not None and self.island_size < num_nodes:
+                island_members = self._select_partners(rank, num_nodes)
+            else:
+                island_members = set(range(num_nodes))
 
-    def _set_master_grad(self, model) -> None:
-        """Set gradients on master model based on difference between master and worker models."""
-        for name, param in self.master_model.named_parameters():
-            param.grad = param.data - model.state_dict()[name].data.to("cpu")
+            self._average_models(model, island_members, num_nodes)
 
-    def _synchronize_master_model(self, model) -> None:
-        """Synchronize worker model with master model parameters."""
-        for name, param in model.named_parameters():
-            param.data = self.master_model.state_dict()[name].data.to(param.device)
+    def _init_node(self, model, rank, num_nodes):
+        pass
 
 
-# DILOCO STRATEGY
-class DiLoCoStrategy(CommunicateOptimizeStrategy):
+class FedAvgStrategy(CommunicateOptimizeStrategy):
     def __init__(
         self,
-        optim_spec: Optional[
-            Union[str, OptimSpec]
-        ] = None,  # inner optimizer is named optim_spec for consistency
-        outer_optim_spec: Optional[Union[str, OptimSpec]] = None,
-        H: int = 100,
+        inner_optim: Optional[Union[str, OptimSpec]] = None,
+        island_size: Optional[int] = None,
+        H: int = 1,
+        max_norm: float = None,
         **kwargs,
     ):
-        self.H = H
-
-        # Ensure optim_spec is properly initialized
-        optim_spec = ensure_optim_spec(optim_spec, OptimSpec(torch.optim.AdamW))
-
-        # Create the DiLoCo communicator
-        self.diloco_comm = DiLoCoCommunicator(H=H, outer_optim_spec=outer_optim_spec)
+        # Create the averaging communicator
+        averaging_comm = AveragingCommunicator(island_size=island_size)
 
         super().__init__(
-            optim_spec=optim_spec, communication_modules=[self.diloco_comm], **kwargs
+            inner_optim=inner_optim,
+            communication_modules=[averaging_comm],
+            max_norm=max_norm,
+            **kwargs,
         )
 
+        self.island_size = island_size
+        self.H = H
 
-STRATEGY = DiLoCoStrategy(
-    optim_spec=OptimSpec(torch.optim.AdamW, lr=0.0004),
+    def _communicate(self):
+        """Apply communication modules at the specified frequency."""
+        if self.local_step % self.H == 0 and self.local_step > 0:
+            super()._communicate()
+
+    def _init_node(self, model, rank, num_nodes):
+        super()._init_node(model, rank, num_nodes)
+
+        if self.island_size is None:
+            self.island_size = num_nodes
+
+
+STRATEGY = FedAvgStrategy(
+    inner_optim=OptimSpec(torch.optim.AdamW, lr=0.001),
     lr_scheduler="lambda_cosine",
     lr_scheduler_kwargs={
-        "warmup_steps": 1000,
+        "warmup_steps": 500,
         "cosine_anneal": True,
     },
-    max_norm=1.0,
-    H=5,
+    island_size=5,
 )
