@@ -1,13 +1,13 @@
 <div align="center">
 
 # DisTrOpZ
-SN38 - Mechanism 1
 
 
 <img src="assets/imagination.png" alt="EXO Gym" width="50%">
 
 
-### DisTrOpZ: Distritubed Training Over The Internet Optimization
+## DisTrOpZ: Distritubed Training Over The Internet Optimization
+SN38 - Mechanism 1
 
 </div>
 
@@ -15,7 +15,7 @@ Inspired by [Exo Gym](https://github.com/exo-explore/gym), DisTrOpZ is a mechani
 
 Here we use Exo Gym's definition of a strategy: an abstract class for an optimization strategy, which both defines **how the nodes communicate** with each other and **how model weights are updated**. Typically, a gradient strategy will include an optimizer as well as a communication step. Sometimes (eg. DeMo), the optimizer step is comingled with the communication.
 
-#### How To Run A Miner
+### How To Run A Miner
 
 Use ```miner_base.py``` as your baseline to come up with a distributed training optimizer and communication strategy that can outperform the current top performing strategy. Once you have an optimal solution, publish it as a gist and commit it to the chain using the following command:
 
@@ -33,7 +33,7 @@ python /root/DisTrOpZ/miner/miner.py
     --github.token <your github token>
 ```
 
-##### How To Run A Validator
+### How To Run A Validator
 
 ```bash
 python /root/DisTrOpZ/validator/validator.py
