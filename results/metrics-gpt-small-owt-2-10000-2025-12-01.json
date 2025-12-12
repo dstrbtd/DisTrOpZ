@@ -1,0 +1,20 @@
+{
+  "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj": {
+    "throughput": 136531,
+    "loss": 8.738632862750565,
+    "communication": 61784317288,
+    "last_update": "2025-11-26T16:57:44Z"
+  },
+  "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw": {
+    "throughput": 137535,
+    "loss": 4.406031524870421,
+    "communication": 137488068424,
+    "last_update": "2025-11-20T16:03:11Z"
+  },
+  "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA": {
+    "throughput": 136843,
+    "loss": 4.6029105266113035,
+    "communication": 73647165256,
+    "last_update": "2025-11-20T16:03:54Z"
+  }
+}

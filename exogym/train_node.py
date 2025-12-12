@@ -256,6 +256,11 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
                 self.logger.log_loss(loss=global_loss, name="global")
 
         del model_clone
+        return (
+            global_loss_tensor.item()
+            if self.num_nodes > 1
+            else loss_total / int(self.val_size / self.batch_size)
+        )
 
     def train(self):
         enable_prof = self.kwargs.get("enable_profiler", True)  # or False by default
@@ -338,7 +343,7 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
 
             dist.barrier()
 
-        self._evaluate()
+        global_loss = self._evaluate()
 
         elapsed = time.time() - start_time
 
@@ -375,6 +380,7 @@ class TrainNode(LogModule, CheckpointMixin, CorrelationMixin):
             "token_loss": self.total_loss,  # summed loss *per token* (numerator)
             "elapsed": elapsed,
             "profiler_comm": comm_rows,  # per-op counts + rough bytes
+            "eval_loss": global_loss,
         }
 
     def __config__(self):

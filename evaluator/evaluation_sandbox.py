@@ -39,9 +39,8 @@ def load_strategy(path):
 
 def main():
     # Miner script is mounted at /sandbox/strategy.py
-    script_path = "sandbox/strategy.py"
+    # script_path = "sandbox/strategy.py"
     script_path = "/root/DisTrOpZ/evaluator/sandbox/strategy.py"
-    # script_path = "/root/DisTrOpZ/miner/miner_sparseloco.py"
     try:
         strategy = script_path
         train_dataset, _ = get_dataset(
@@ -73,7 +72,7 @@ def main():
         # Extract the 3 integer metrics
         result = {
             "throughput": int(metrics_out.get("tokens_per_sec", 0)),
-            "loss": float(metrics_out.get("loss_per_token", 0.0)),
+            "loss": float(metrics_out.get("eval_loss", 0.0)),
             "communication": int(metrics_out.get("comm_bytes_total", 0)),
         }
         print("\n" + json.dumps(result))  # output to stdout

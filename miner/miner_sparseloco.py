@@ -380,32 +380,6 @@ class DiLoCoCommunicator(CommunicationModule):
     def communicate(self, model, rank: int, num_nodes: int, local_step: int) -> None:
         """Perform master-worker communication."""
         if num_nodes > 1 and local_step % self.H == 0 and local_step > 0:
-            # Original DiLoCo
-            # # First average all models
-            # for param in model.parameters():
-            #     all_reduce(param.data, op=dist.ReduceOp.SUM)
-            #     param.data /= num_nodes
-
-            # # Master does outer optimization step
-            # if rank == 0 and self.master_model is not None:
-            #     self.outer_optimizer.zero_grad()
-            #     self._set_master_grad(model)
-            #     self.outer_optimizer.step()
-            #     self._synchronize_master_model(model)
-
-            # # Broadcast updated parameters
-            # for param in model.parameters():
-            #     broadcast(param.data, src=0)
-
-            # # Alternative DiLoCo
-            # self.outer_optimizer.zero_grad()
-            # self._set_master_grad(model)
-            # for param in model.parameters():
-            #     all_reduce(param.data, op=dist.ReduceOp.SUM)
-            #     param.data /= num_nodes
-            # self.outer_optimizer.step()
-            # self._synchronize_master_model(model)
-
             # SparseLoCo
             self.outer_optimizer.zero_grad()
             self._set_master_grad(model)
@@ -417,17 +391,7 @@ class DiLoCoCommunicator(CommunicationModule):
         self.process_group = dist.new_group(
             backend="gloo", timeout=datetime.timedelta(60)
         )
-        # Original DiLoCo
-        # if rank == 0:
-        #     self.master_model = deepcopy(model).to("cpu")
-        #     for param in self.master_model.parameters():
-        #         param.requires_grad = True
-        #     # build outer optimizer with the Gloo group
-        #     self.outer_optimizer = self.outer_optim_spec.cls(
-        #         self.master_model.parameters(),
-        #         process_group=self.process_group,
-        #         **(self.outer_optim_spec.kwargs or {}),
-        #     )
+        # SparseLoCo
         self.master_model = deepcopy(model).to("cpu")
         for param in self.master_model.parameters():
             param.requires_grad = True

@@ -36,6 +36,7 @@ def patch_collectives():
             _comm.bytes += size
             _comm.by_op[name] = _comm.by_op.get(name, 0) + size
             return fn(output, scatter_list, src, *a, **k)
+
         return inner
 
     def wrap_allgather(name, fn):
@@ -44,13 +45,14 @@ def patch_collectives():
             return fn(out_list, t, *a, **k)
 
         return inner
-    
+
     def wrap_alltoall(name, fn):
         def inner(output, input, *a, **k):
             size = input.numel() * input.element_size()
             _comm.bytes += size
             _comm.by_op[name] = _comm.by_op.get(name, 0) + size
             return fn(output, input, *a, **k)
+
         return inner
 
     dist.all_reduce = wrap_base("all_reduce", dist.all_reduce)

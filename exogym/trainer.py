@@ -6,7 +6,7 @@ from exogym.train_node import TrainNode
 from exogym.strategy import Strategy
 from exogym.common import TrainConfig
 from exogym.aux.utils import print_dataset_size, _average_model_states
-from DisTrOpZ.exogym.aux.tracker import patch_collectives, comm_bytes
+from exogym.aux.tracker import patch_collectives, comm_bytes
 from exogym.minibatch_probe import find_minibatch_size_isolated
 from exogym.utils import init_process_group_portsafe
 
@@ -260,6 +260,8 @@ class Trainer:
         total_token_loss = sum(m["token_loss"] for m in metrics_list)
         wall = max(m["elapsed"] for m in metrics_list)  # parallel wall time
         total_token_loss = sum(m["token_loss"] for m in metrics_list)
+        eval_loss = sum(m["eval_loss"] for m in metrics_list) / len(metrics_list)
+
         # convert defaultdict back to plain dict
         profiler_comm_agg = {
             op: {"count": v["count"], "bytes": v["bytes"]} for op, v in prof_agg.items()
@@ -278,6 +280,7 @@ class Trainer:
         metrics_out = {
             "loss_per_token": loss_per_token,
             "tokens_per_sec": tokens_per_sec,
+            "eval_loss": eval_loss,
             "comm_profiler_agg": profiler_comm_agg,
             "comm_bytes_total": total_comm_bytes,
             "comm_bytes_by_op": by_op_agg,

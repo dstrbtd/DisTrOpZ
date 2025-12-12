@@ -256,7 +256,6 @@ class Strategy(ABC, LogModule):
         return config
 
 
-
 # BASE COMMUNICATE OPTIMIZER STRATEGY
 class CommunicationModule(ABC):
     """Abstract base class for communication modules."""
@@ -887,7 +886,6 @@ class DeMoStrategy(Strategy):
 
 
 STRATEGY = DeMoStrategy(
-    lr=0.001,
     lr_scheduler="lambda_cosine",
     lr_scheduler_kwargs={
         "warmup_steps": 500,
