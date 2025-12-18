@@ -1043,8 +1043,11 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
 
 
 STRATEGY = DiLoCoStrategy(
-    optim_spec=OptimSpec(SingleDeviceMuonWithAuxAdam),
-    compression=None,
+    optim_spec=OptimSpec(torch.optim.AdamW, lr=0.001),
+    compression = Compression(
+        sparsifier=None,
+        quantizer=UniformKBitQuantizer(n_bins=4, range_in_sigmas=6),
+    ),
     lr_scheduler="lambda_cosine",
     lr_scheduler_kwargs={
         "warmup_steps": 500,

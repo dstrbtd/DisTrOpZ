@@ -2,24 +2,30 @@ import os
 import json
 import numpy as np
 import matplotlib.pyplot as plt
-from adjustText import adjust_text
+# from adjustText import adjust_text
 
 STARTING_LOSS = 10.80
 
 # -------- Load JSON --------
 # Save your data as, e.g., results.json
-with open(
-    "/root/DisTrOpZ/results/metrics-gpt-small-owt-2-10000-2025-12-06.json", "r"
-) as f:
-    # with open("/root/DisTrOpZ/results/metrics-gpt-base-owt-2-1000-2025-12-09.json", "r") as f:
+with open("/root/DisTrOpZ/results/metrics-gpt-small-owt-2-100-2025-12-18.json", "r") as f:
+# with open(
+#     "/root/DisTrOpZ/results/metrics-gpt-small-owt-2-10000-2025-12-06.json", "r"
+# ) as f:
+# with open("/root/DisTrOpZ/results/metrics-gpt-base-owt-2-1000-2025-12-09.json", "r") as f:
     data = json.load(f)
 
 new_data = {}
 
 for key in data.keys():
     data[key]["loss"] = STARTING_LOSS - data[key]["loss"]
-    if key == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
+    # data[key]["loss"] = data[key]["loss"]
+    if key == "5ECDEtiHDP7tXeG3L7PViHsjSUPCsijKEokrFWhdXuATDjH1":
+        new_data["MuLoCo-2bit-EF"] = data[key]
+    elif key == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
         new_data["SparseLoCo"] = data[key]
+    elif key == "5HCDdzGFn2FN5bTJCGrXREWQFMCspDYcT9QeETrzkwvkDzMT":
+        new_data["DiLoCo-2bit-EF"] = data[key]
     elif key == "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
         new_data["DiLoCo"] = data[key]
     elif key == "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA":

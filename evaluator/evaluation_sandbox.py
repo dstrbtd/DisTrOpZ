@@ -39,7 +39,6 @@ def load_strategy(path):
 
 def main():
     # Miner script is mounted at /sandbox/strategy.py
-    # script_path = "sandbox/strategy.py"
     script_path = "/root/DisTrOpZ/evaluator/sandbox/strategy.py"
     try:
         strategy = script_path

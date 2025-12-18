@@ -1,0 +1,44 @@
+{
+  "5ECDEtiHDP7tXeG3L7PViHsjSUPCsijKEokrFWhdXuATDjH1": {
+    "throughput": 136920,
+    "loss": 8.975373268127441,
+    "communication": 6538635352,
+    "last_update": "2025-11-20T16:04:00",
+    "score": 0.42292179428128157
+  },
+  "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj": {
+    "throughput": 136812,
+    "loss": 8.94176959991455,
+    "communication": 6538635352,
+    "last_update": "2025-11-26T16:57:44Z",
+    "score": 0.4134818102729287
+  },
+  "5HCDdzGFn2FN5bTJCGrXREWQFMCspDYcT9QeETrzkwvkDzMT": {
+    "throughput": 134224,
+    "loss": 8.01095199584961,
+    "communication": 728974552,
+    "last_update": "2025-12-17T11:47:58Z",
+    "score": 0.5352282081758089
+  },
+  "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw": {
+    "throughput": 136709,
+    "loss": 8.019851684570312,
+    "communication": 1413759064,
+    "last_update": "2025-11-20T16:03:11Z",
+    "score": 0.8021471570440661
+  },
+  "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA": {
+    "throughput": 135735,
+    "loss": 9.744706153869629,
+    "communication": 853106776,
+    "last_update": "2025-11-20T16:03:54Z",
+    "score": 0.5130311407727974
+  },
+  "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg": {
+    "throughput": 135939,
+    "loss": 6.882236003875732,
+    "communication": 1060319320,
+    "last_update": "2025-11-26T17:00:48Z",
+    "score": 0.859698062052714
+  }
+}

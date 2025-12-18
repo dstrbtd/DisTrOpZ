@@ -1,0 +1,14 @@
+{
+  "5ECDEtiHDP7tXeG3L7PViHsjSUPCsijKEokrFWhdXuATDjH1": {
+    "throughput": 128071,
+    "loss": 10.752102851867676,
+    "communication": 176719888,
+    "last_update": "2025-12-17T11:47:05Z"
+  },
+  "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj": {
+    "throughput": 128941,
+    "loss": 10.783021926879883,
+    "communication": 176719888,
+    "last_update": "2025-11-26T16:57:44Z"
+  }
+}

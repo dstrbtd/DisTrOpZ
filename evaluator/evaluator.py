@@ -5,12 +5,21 @@ import pandas as pd
 import requests
 import datetime
 import re
+import shutil
 
 # --- Config ---
 SANDBOX_IMAGE = "distropz_sandbox"
 INFLUXDB_MEASUREMENT = "mechanism1_metrics"
 MAX_RUNTIME = 900  # seconds
 
+WHITELISTED_HOTKEYS = [
+    "5ECDEtiHDP7tXeG3L7PViHsjSUPCsijKEokrFWhdXuATDjH1",
+    "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj",
+    "5HCDdzGFn2FN5bTJCGrXREWQFMCspDYcT9QeETrzkwvkDzMT",
+    "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw",
+    "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA",
+    "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg",
+]
 
 # ------------------------------------------------------
 # 1. Validate the metrics schema and sanity bounds
@@ -142,6 +151,8 @@ def validate_miner(
 
     # --- fetch gist ---
     match = re.search(r"([0-9a-fA-F]{8,})$", gist_url)
+    if hotkey not in WHITELISTED_HOTKEYS:
+        raise ValueError(f"Hotkey {hotkey} not in whitelist")
     if not match:
         raise ValueError(f"Could not parse gist ID from URL: {gist_url}")
     gist_id = match.group(1)
@@ -149,54 +160,60 @@ def validate_miner(
     api_url = f"https://api.github.com/gists/{gist_id}"
     resp = requests.get(api_url)
     last_updated_at = resp.json().get("updated_at")
+
     # last_updated_at = datetime.datetime.fromisoformat(last_updated_at.replace("Z", "+00:00"))
     if False:
-        if hotkey == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
-            path = "/root/DisTrOpZ/miner/miner_diloco.py"
-        elif hotkey == "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
+        # path = "/root/DisTrOpZ/miner/miner_sparseloco.py"
+        if hotkey == "5ECDEtiHDP7tXeG3L7PViHsjSUPCsijKEokrFWhdXuATDjH1":
+            path = "/root/DisTrOpZ/miner/miner_muloco_2bit_ef.py"
+        elif hotkey == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
             path = "/root/DisTrOpZ/miner/miner_sparseloco.py"
+        elif hotkey == "5HCDdzGFn2FN5bTJCGrXREWQFMCspDYcT9QeETrzkwvkDzMT":
+            path = "/root/DisTrOpZ/miner/miner_diloco_2bit_ef.py"
+        elif hotkey == "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
+            path = "/root/DisTrOpZ/miner/miner_diloco.py"
         elif hotkey == "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA":
             path = "/root/DisTrOpZ/miner/miner_demo.py"
         elif hotkey == "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg":
+            path = "/root/DisTrOpZ/miner/miner_muloco.py"
+        else:
             path = "/root/DisTrOpZ/miner/miner_federated_averaging.py"
-
-        # Copy the file
-        import shutil
+        print("PATH", path, hotkey)
 
         shutil.copy(path, "/root/DisTrOpZ/evaluator/sandbox/strategy.py")
         tmp_path = path
-    else:
-        if resp.status_code == 404:
-            raise ValueError(f"Gist not found or not public: {gist_url}")
-        resp.raise_for_status()
 
-        files = resp.json().get("files", {})
-        if not files:
-            raise ValueError("Gist has no files.")
+    if resp.status_code == 404:
+        raise ValueError(f"Gist not found or not public: {gist_url}")
+    resp.raise_for_status()
 
-        filename, fileinfo = next(iter(files.items()))
-        code = fileinfo["content"]
+    files = resp.json().get("files", {})
+    if not files:
+        raise ValueError("Gist has no files.")
 
-        # Verify hash
-        actual_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
-        if actual_hash != expected_hash:
-            raise ValueError(
-                f"Hash mismatch! expected {expected_hash[:8]}, got {actual_hash[:8]}"
-            )
+    filename, fileinfo = next(iter(files.items()))
+    code = fileinfo["content"]
 
-        # --- write to temp file ---
-        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
-            tmp.write(code)
-            tmp_path = tmp.name
-    # Copy the file
-    import shutil
+    # Verify hash
+    actual_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    if actual_hash != expected_hash:
+        raise ValueError(
+            f"Hash mismatch! expected {expected_hash[:8]}, got {actual_hash[:8]}"
+        )
+
+    # --- write to temp file ---
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+        tmp.write(code)
+        tmp_path = tmp.name
 
     shutil.copy(tmp_path, "/root/DisTrOpZ/evaluator/sandbox/strategy.py")
     tmp_path = "/root/DisTrOpZ/evaluator/sandbox/strategy.py"
+
     try:
         bt.logging.success(f"✅ Run {tmp_path} in sandbox")
         metrics = run_in_sandbox(tmp_path, config)
         metrics["last_update"] = last_updated_at
+        # metrics = {}
         # breakpoint()
         bt.logging.success(f"✅ Miner {hotkey}: {metrics}")
         return metrics
