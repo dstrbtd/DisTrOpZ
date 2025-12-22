@@ -129,6 +129,10 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
         )
 
         dist.destroy_process_group()
+
+    except Exception as e:
+        raise Exception(f"Exception in worker rank {rank}: {str(e)}") from e
+
     finally:
         # Always run, even on exceptions
         if dist.is_initialized():

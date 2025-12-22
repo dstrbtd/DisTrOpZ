@@ -62,7 +62,7 @@ def main():
             num_nodes=NUM_NODES,
             device=DEVICE,
             batch_size=256,
-            minibatch_size=32,
+            minibatch_size=2,
             shuffle=False,
             val_size=256,
             val_interval=10,

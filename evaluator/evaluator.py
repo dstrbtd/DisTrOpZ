@@ -72,7 +72,7 @@ def run_in_sandbox(gist_path, config):
     #     SANDBOX_IMAGE,
     # ]
     print(gist_path)
-    cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
+    cmd = ["NCCL_P2P_DISABLE=1","/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
 
     process = subprocess.Popen(
         cmd,
