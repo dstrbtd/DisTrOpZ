@@ -1,0 +1,56 @@
+{
+  "benchmark_demo": {
+    "throughput": 27912,
+    "loss": 7.429255962371826,
+    "communication": 82202591408,
+    "last_update": "2025-12-24T20:36:40.811824"
+  },
+  "benchmark_diloco": {
+    "throughput": 28116,
+    "loss": 6.289416790008545,
+    "communication": 136270577840,
+    "last_update": "2025-12-24T21:50:15.137905"
+  },
+  "benchmark_diloco_2bit_ef": {
+    "throughput": 21195,
+    "loss": 6.325433254241943,
+    "communication": 70264572848,
+    "last_update": "2025-12-24T23:01:34.460036"
+  },
+  "benchmark_federated_averaging": {
+    "throughput": 28045,
+    "loss": 6.570396423339844,
+    "communication": 630251421872,
+    "last_update": "2025-12-25T00:32:50.238098"
+  },
+  "benchmark_muloco": {
+    "throughput": 26943,
+    "loss": 6.366390228271484,
+    "communication": 102202933424,
+    "last_update": "2025-12-25T01:43:40.200553"
+  },
+  "benchmark_muloco_2bit_ef": {
+    "throughput": 22910,
+    "loss": 6.653679370880127,
+    "communication": 70264572848,
+    "last_update": "2025-12-25T02:57:23.052394"
+  },
+  "benchmark_sparseloco": {
+    "throughput": 27523,
+    "loss": 6.752551555633545,
+    "communication": 70530810416,
+    "last_update": "2025-12-25T04:22:49.597483"
+  },
+  "benchmark_sparta": {
+    "throughput": 28162,
+    "loss": 7.322621822357178,
+    "communication": 212922762880,
+    "last_update": "2025-12-25T05:35:22.186571"
+  },
+  "benchmark_sparta_diloco": {
+    "throughput": 28135,
+    "loss": 7.035542964935303,
+    "communication": 212922762880,
+    "last_update": "2025-12-25T06:47:25.575656"
+  }
+}

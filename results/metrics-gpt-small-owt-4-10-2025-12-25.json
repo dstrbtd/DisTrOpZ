@@ -1,0 +1,14 @@
+{
+  "benchmark_demo": {
+    "throughput": 67537,
+    "loss": 10.798124313354492,
+    "communication": 382685216,
+    "last_update": "2025-12-25T19:43:47.489709"
+  },
+  "benchmark_diloco": {
+    "throughput": 68001,
+    "loss": 10.765249252319336,
+    "communication": 353439776,
+    "last_update": "2025-12-25T19:48:15.738590"
+  }
+}

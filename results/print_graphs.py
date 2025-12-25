@@ -2,17 +2,20 @@ import os
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+
 # from adjustText import adjust_text
 
 STARTING_LOSS = 10.80
 
 # -------- Load JSON --------
 # Save your data as, e.g., results.json
-with open("/root/DisTrOpZ/results/metrics-gpt-small-owt-2-100-2025-12-18.json", "r") as f:
-# with open(
-#     "/root/DisTrOpZ/results/metrics-gpt-small-owt-2-10000-2025-12-06.json", "r"
-# ) as f:
-# with open("/root/DisTrOpZ/results/metrics-gpt-base-owt-2-1000-2025-12-09.json", "r") as f:
+with open(
+    "/root/DisTrOpZ/results/metrics-gpt-small-owt-2-100-2025-12-18.json", "r"
+) as f:
+    # with open(
+    #     "/root/DisTrOpZ/results/metrics-gpt-small-owt-2-10000-2025-12-06.json", "r"
+    # ) as f:
+    # with open("/root/DisTrOpZ/results/metrics-gpt-base-owt-2-1000-2025-12-09.json", "r") as f:
     data = json.load(f)
 
 new_data = {}

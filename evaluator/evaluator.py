@@ -6,10 +6,13 @@ import requests
 import datetime
 import re
 import shutil
+import gc
+import torch
+import logging
+from logger import setup_loki_logging, add_sandbox_handler
 
 # --- Config ---
 SANDBOX_IMAGE = "distropz_sandbox"
-INFLUXDB_MEASUREMENT = "mechanism1_metrics"
 MAX_RUNTIME = 900  # seconds
 
 WHITELISTED_HOTKEYS = [
@@ -21,17 +24,18 @@ WHITELISTED_HOTKEYS = [
     "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg",
 ]
 
-# ------------------------------------------------------
-# 1. Validate the metrics schema and sanity bounds
-# ------------------------------------------------------
+
+# Validate the metrics schema and confirm each metric is within bounds
 def validate_metrics(metrics):
+    # Metric Schema
     required = {"throughput": int, "loss": (int, float), "communication": int}
     for key, expected_type in required.items():
         if key not in metrics:
             raise ValueError(f"Missing key: {key}")
         if not isinstance(metrics[key], expected_type):
             raise ValueError(f"{key} has wrong type: {type(metrics[key])}")
-    # bounds
+
+    # Metric bounds
     if not (0 <= metrics["throughput"] < 10**9):
         raise ValueError("throughput out of range")
     if not (0.0 <= metrics["loss"] < 1e6):
@@ -41,10 +45,8 @@ def validate_metrics(metrics):
     return metrics
 
 
-# ------------------------------------------------------
-# 2. Execute untrusted miner gist inside sandbox container
-# ------------------------------------------------------
-def run_in_sandbox(gist_path, config):
+# Execute untrusted miner gist inside sandbox container
+def run_in_sandbox(gist_path, config, sandbox_logger=None):
     # # Install docker on something other than runpod
     # cmd = [
     #     "docker",
@@ -71,8 +73,8 @@ def run_in_sandbox(gist_path, config):
     #     # image name
     #     SANDBOX_IMAGE,
     # ]
-    print(gist_path)
-    cmd = ["NCCL_P2P_DISABLE=1","/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
+    bt.logging.info(f"Running sandbox with strategy: {gist_path}")
+    cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
 
     process = subprocess.Popen(
         cmd,
@@ -86,14 +88,19 @@ def run_in_sandbox(gist_path, config):
             "MAX_STEPS": str(config.max_steps),
             "DATASET": config.dataset,
             "MODEL_SIZE": config.model_size,
+            "NCCL_P2P_DISABLE": str(1),
         },
     )
 
     full_output = []
     try:
         for line in process.stdout:
+            line_stripped = line.rstrip()
             print(line, end="")  # stream to your terminal in real-time
             full_output.append(line)
+            # Forward sandbox output to Loki if logger is available
+            if sandbox_logger and line_stripped:
+                sandbox_logger.info(line_stripped)
         process.wait(timeout=None)
     except subprocess.TimeoutExpired:
         process.kill()
@@ -117,9 +124,14 @@ def run_in_sandbox(gist_path, config):
 # ------------------------------------------------------
 # 3. Insert verified metrics into DB (trusted context)
 # ------------------------------------------------------
-def log_to_db(write_api, hotkey, uid, metrics, config, gist_url, current_block):
+def log_to_db(
+    write_api, hotkey, uid, metrics, config, gist_url, current_block, benchmark_flag
+):
+    influxdb_measurement = (
+        "hotkey_scores" if benchmark_flag == False else "benchmark_scores"
+    )
     point = (
-        Point(INFLUXDB_MEASUREMENT)
+        Point(influxdb_measurement)
         .tag("number_of_nodes", config.number_of_nodes)
         .tag("max_steps", config.max_steps)
         .tag("model_size", config.model_size)
@@ -128,6 +140,7 @@ def log_to_db(write_api, hotkey, uid, metrics, config, gist_url, current_block):
         .tag("hotkey", hotkey)
         .tag("uid", uid)
         .tag("gist_url", gist_url)
+        .tag("benchmark_flag", benchmark_flag)
         .time(datetime.datetime.now(datetime.timezone.utc), WritePrecision.NS)
     )
     bt.logging.info("Checkpoint 1")
@@ -144,138 +157,144 @@ def log_to_db(write_api, hotkey, uid, metrics, config, gist_url, current_block):
 # 4. Validate a single miner: fetch gist, verify hash, run sandbox, log results
 # -------------------------------------------------------------------------------
 def validate_miner(
-    write_api, hotkey, uid, gist_url, expected_hash, config, current_block
+    hotkey,
+    gist_url,
+    expected_hash,
+    config,
+    benchmark=False,
+    benchmark_file=None,
+    sandbox_logger=None,
 ):
     """Fetch gist, verify hash, run sandbox, log results"""
-    bt.logging.info(f"Evaluating miner {hotkey}")
+    current_strategy_path = "/root/DisTrOpZ/evaluator/sandbox/strategy.py"
 
-    # --- fetch gist ---
-    match = re.search(r"([0-9a-fA-F]{8,})$", gist_url)
-    if hotkey not in WHITELISTED_HOTKEYS:
-        raise ValueError(f"Hotkey {hotkey} not in whitelist")
-    if not match:
-        raise ValueError(f"Could not parse gist ID from URL: {gist_url}")
-    gist_id = match.group(1)
+    if benchmark == False:
+        bt.logging.info(f"Evaluating miner {hotkey}")
 
-    api_url = f"https://api.github.com/gists/{gist_id}"
-    resp = requests.get(api_url)
-    last_updated_at = resp.json().get("updated_at")
+        # Fetch gist
+        match = re.search(r"([0-9a-fA-F]{8,})$", gist_url)
+        if hotkey not in WHITELISTED_HOTKEYS:
+            raise ValueError(f"Hotkey {hotkey} not in whitelist")
+        if not match:
+            raise ValueError(f"Could not parse gist ID from URL: {gist_url}")
+        gist_id = match.group(1)
 
-    # last_updated_at = datetime.datetime.fromisoformat(last_updated_at.replace("Z", "+00:00"))
-    if False:
-        # path = "/root/DisTrOpZ/miner/miner_sparseloco.py"
-        if hotkey == "5ECDEtiHDP7tXeG3L7PViHsjSUPCsijKEokrFWhdXuATDjH1":
-            path = "/root/DisTrOpZ/miner/miner_muloco_2bit_ef.py"
-        elif hotkey == "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj":
-            path = "/root/DisTrOpZ/miner/miner_sparseloco.py"
-        elif hotkey == "5HCDdzGFn2FN5bTJCGrXREWQFMCspDYcT9QeETrzkwvkDzMT":
-            path = "/root/DisTrOpZ/miner/miner_diloco_2bit_ef.py"
-        elif hotkey == "5EEqeZe2KmWTHKRr48xZNgfDXZCJScfTMvt2daoMxKz1Zifw":
-            path = "/root/DisTrOpZ/miner/miner_diloco.py"
-        elif hotkey == "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA":
-            path = "/root/DisTrOpZ/miner/miner_demo.py"
-        elif hotkey == "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg":
-            path = "/root/DisTrOpZ/miner/miner_muloco.py"
-        else:
-            path = "/root/DisTrOpZ/miner/miner_federated_averaging.py"
-        print("PATH", path, hotkey)
+        api_url = f"https://api.github.com/gists/{gist_id}"
+        resp = requests.get(api_url)
+        last_updated_at = resp.json().get("updated_at")
 
-        shutil.copy(path, "/root/DisTrOpZ/evaluator/sandbox/strategy.py")
-        tmp_path = path
+        if resp.status_code == 404:
+            raise ValueError(f"Gist not found or not public: {gist_url}")
+        resp.raise_for_status()
 
-    if resp.status_code == 404:
-        raise ValueError(f"Gist not found or not public: {gist_url}")
-    resp.raise_for_status()
+        files = resp.json().get("files", {})
+        if not files:
+            raise ValueError("Gist has no files.")
 
-    files = resp.json().get("files", {})
-    if not files:
-        raise ValueError("Gist has no files.")
+        _, fileinfo = next(iter(files.items()))
+        code = fileinfo["content"]
 
-    filename, fileinfo = next(iter(files.items()))
-    code = fileinfo["content"]
+        # Verify hash
+        actual_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+        if actual_hash != expected_hash:
+            raise ValueError(
+                f"Hash mismatch! expected {expected_hash[:8]}, got {actual_hash[:8]}"
+            )
 
-    # Verify hash
-    actual_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
-    if actual_hash != expected_hash:
-        raise ValueError(
-            f"Hash mismatch! expected {expected_hash[:8]}, got {actual_hash[:8]}"
-        )
+        # Write to temp file
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
+            tmp.write(code)
+            tmp_path = tmp.name
 
-    # --- write to temp file ---
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
-        tmp.write(code)
-        tmp_path = tmp.name
+    else:
+        bt.logging.info(f"Benchmarking {benchmark_file}")
+        tmp_path = f"/root/DisTrOpZ/miner/{benchmark_file}"
+        last_updated_at = datetime.datetime.now().isoformat()
 
-    shutil.copy(tmp_path, "/root/DisTrOpZ/evaluator/sandbox/strategy.py")
-    tmp_path = "/root/DisTrOpZ/evaluator/sandbox/strategy.py"
+    shutil.copy(tmp_path, current_strategy_path)
 
     try:
-        bt.logging.success(f"✅ Run {tmp_path} in sandbox")
-        metrics = run_in_sandbox(tmp_path, config)
+        bt.logging.success(f"✅ Run {current_strategy_path} in sandbox")
+
+        metrics = run_in_sandbox(
+            current_strategy_path, config, sandbox_logger=sandbox_logger
+        )
         metrics["last_update"] = last_updated_at
-        # metrics = {}
-        # breakpoint()
+
+        # Cleanup after sandbox execution
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         bt.logging.success(f"✅ Miner {hotkey}: {metrics}")
         return metrics
+
     except Exception as e:
         bt.logging.error(f"❌ Failed miner {hotkey}: {e}")
         traceback.print_exc()
         return {}
-    # finally:
-    #     os.remove(tmp_path)
+
+    finally:
+        if benchmark == False:
+            os.remove(tmp_path)
 
 
-# -----------------------------
-# 3. Main validation loop
-# -----------------------------
+# Main validation loop
 def main():
     parser = argparse.ArgumentParser(description="Miner script")
     parser.add_argument(
         "--number_of_nodes",
         type=int,
-        default=2,
+        default=4,
         help="Nuber of GPUs to use for testing",
     )
     parser.add_argument(
-        "--max_steps", type=int, default=10000, help="Maximum number of steps to test"
+        "--max_steps", type=int, default=1000, help="Maximum number of steps to test"
     )
     parser.add_argument("--model_size", default="large", help="NanoGPT model size")
-    parser.add_argument("--dataset", default="shakespeare", help="Dataset name")
+    parser.add_argument("--dataset", default="owt", help="Dataset name")
     parser.add_argument(
         "--output_dir", type=str, default="results", help="Results directory"
     )
     parser.add_argument(
         "--netuid", type=int, default=178, help="Bittensor network UID."
     )
-    parser.add_argument("--influxdb.measurement", default="distropz_metrics")
+    parser.add_argument("--influxdb.measurement", default="mechanism-1")
     parser.add_argument("--influxdb.bucket", required=True)
     parser.add_argument("--influxdb.org", required=True)
-    parser.add_argument("--influxdb.url", default="http://localhost:8086")
+    parser.add_argument("--influxdb.url", default="http://localhost:8087")
     parser.add_argument(
         "--influxdb.token", help="InfluxDB token (or set INFLUXDB_TOKEN)"
     )
 
+    # Add wallet arguments
     bt.wallet.add_args(parser)
     bt.subtensor.add_args(parser)
+    bt.logging.add_args(parser)
     config = bt.config(parser)
-    config.subtensor.network = "test"
-    config.subtensor.chain_endpoint = "wss://test.finney.opentensor.ai:443/"
+    bt.logging.setLevel("INFO")
 
+    # Set up Loki logging for evaluator
+    loki_listener = setup_loki_logging(config=config, component="evaluator")
+
+    # Set up separate Loki handler for sandbox logs
+    sandbox_logger, sandbox_listener = add_sandbox_handler(config=config)
+
+    # Add subtensor and metagraph arguments
+    subtensor = bt.subtensor(config=config)
+    metagraph = subtensor.metagraph(config.netuid)
+    current_block = subtensor.block
+    bt.logging.info(f"Loaded metagraph with {len(metagraph.hotkeys)} miners.")
+
+    # Set up InfluxDB client
     influx = InfluxDBClient(
         url=config.influxdb.url, token=config.influxdb.token, org=config.influxdb.org
     )
     write_api = influx.write_api(write_options=SYNCHRONOUS)
     read_api = influx.query_api()
 
-    bt.logging.setLevel("INFO")
-
-    subtensor = bt.subtensor(config=config)
-    metagraph = subtensor.metagraph(config.netuid)
-    current_block = subtensor.block
-
+    # Ensure output directory exists
     os.makedirs(config.output_dir, exist_ok=True)
-
-    bt.logging.info(f"Loaded metagraph with {len(metagraph.hotkeys)} miners.")
 
     datetime_stamp = datetime.datetime.now().strftime("%Y-%m-%d")
     out_path = os.path.join(
@@ -285,6 +304,41 @@ def main():
 
     metrics = {}
     urls = {}
+
+    for benchmark in os.listdir("/root/DisTrOpZ/miner/"):
+        if benchmark == "miner_base.py" or benchmark == "miner.py":
+            continue
+
+        bt.logging.info(f"🔍 Running benchmark for {benchmark}")
+
+        try:
+            gist_url = "benchmark"
+            sha = "benchmark"
+            hotkey = f"benchmark_{benchmark.split('miner_')[-1].replace('.py','')}"
+
+            # verify and save
+            hotkey_metrics = validate_miner(
+                "",
+                "",
+                "",
+                config,
+                benchmark=True,
+                benchmark_file=benchmark,
+                sandbox_logger=sandbox_logger,
+            )
+
+            urls[hotkey] = hotkey
+            metrics[hotkey] = hotkey_metrics
+            bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
+
+            with open(out_path, "w") as f:
+                json.dump(metrics, f, indent=2)
+
+        except Exception as e:
+            bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
+
+        # finally:
+        #     break
 
     for uid, hotkey in enumerate(metagraph.hotkeys):
         bt.logging.info(f"🔍 Checking miner UID={uid} hotkey={hotkey}")
@@ -301,7 +355,7 @@ def main():
 
             # verify and save
             hotkey_metrics = validate_miner(
-                write_api, hotkey, uid, gist_url, sha, config, current_block
+                hotkey, gist_url, sha, config, sandbox_logger=sandbox_logger
             )
 
             urls[hotkey] = gist_url
@@ -313,6 +367,9 @@ def main():
 
         except Exception as e:
             bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
+
+        # finally:
+        #     break
 
     df = pd.DataFrame(metrics).T
 
@@ -335,33 +392,46 @@ def main():
         + (1 / 3) * df["communication_norm"]
     )
 
-    query = f"""
-    from(bucket: "{config.influxdb.bucket}")
-      |> range(start: -30d)
-      |> filter(fn: (r) => r._measurement == "{INFLUXDB_MEASUREMENT}")
-      |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-    """
-    read_api.query(query)
-    df_query = read_api.query_data_frame(query)
-    df_query = pd.concat(df_query)
+    # query = f"""
+    # from(bucket: "{config.influxdb.bucket}")
+    #   |> range(start: -30d)
+    #   |> filter(fn: (r) => r._measurement == "{INFLUXDB_MEASUREMENT}")
+    #   |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+    # """
+    # read_api.query(query)
+    # df_query = read_api.query_data_frame(query)
+    # df_query = pd.concat(df_query)
 
+    benchmark = None
     for hotkey in metrics.keys():
         if hotkey in urls:
             gist_url = urls[hotkey]
-            uid = metagraph.hotkeys.index(hotkey)
+            if "benchmark" in hotkey:
+                uid = hotkey
+                benchmark = True
+            else:
+                uid = metagraph.hotkeys.index(hotkey)
+                benchmark = False
             # breakpoint()
             metrics[hotkey]["score"] = df.at[hotkey, "score"]
             log_to_db(
-                write_api, hotkey, uid, metrics[hotkey], config, gist_url, current_block
+                write_api,
+                hotkey,
+                uid,
+                metrics[hotkey],
+                config,
+                gist_url,
+                current_block,
+                benchmark,
             )
             bt.logging.info(f"Logged {hotkey} metrics")
 
-    df_query_2 = read_api.query_data_frame(query)
-    df_query_2 = pd.concat(df_query_2)
-    breakpoint()
+    # df_query_2 = read_api.query_data_frame(query)
+    # df_query_2 = pd.concat(df_query_2)
+    # breakpoint()
 
-    df_query_3 = read_api.query_data_frame(query)
-    df_query_3 = pd.concat(df_query_3)
+    # df_query_3 = read_api.query_data_frame(query)
+    # df_query_3 = pd.concat(df_query_3)
 
     # save results
     with open(out_path, "w") as f:

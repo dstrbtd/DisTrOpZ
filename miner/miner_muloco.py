@@ -355,6 +355,7 @@ class CommunicateOptimizeStrategy(Strategy):
         self.optim = self.optim_spec.build(model)
         self._setup_scheduler()
 
+
 # BASE COMPRESSION
 class Quantizer(ABC):
     @abstractmethod
@@ -369,13 +370,14 @@ class Quantizer(ABC):
     def bits_per_value(self) -> int:
         pass
 
+
 class UniformKBitQuantizer(Quantizer):
     def __init__(self, n_bins: int, range_in_sigmas: float):
         self.n_bins = n_bins
         # Check if n_bins is a power of 2
         if not (n_bins > 0 and (n_bins & (n_bins - 1) == 0)):
-             raise ValueError("n_bins must be a power of 2 for k-bit quantization.")
-        
+            raise ValueError("n_bins must be a power of 2 for k-bit quantization.")
+
         self.range = range_in_sigmas
 
     def bits_per_value(self):
@@ -384,7 +386,7 @@ class UniformKBitQuantizer(Quantizer):
     @torch.no_grad()
     def quantize(self, val: torch.Tensor):
         offset = self.n_bins // 2
-        
+
         # 1. Calculate Shift and Scale
         shift = val.mean()
         centered = val - shift
@@ -397,35 +399,45 @@ class UniformKBitQuantizer(Quantizer):
 
         scale = self.range * std / self.n_bins
         if scale.item() == 0 or not torch.isfinite(scale):
-                    scale = torch.tensor(1.0, device=val.device)
-        
+            scale = torch.tensor(1.0, device=val.device)
+
         # 2. Quantization (Float -> Indices)
-        q_indices = ((centered / scale) + offset).round().clamp(0, self.n_bins - 1).to(torch.uint8)
+        q_indices = (
+            ((centered / scale) + offset)
+            .round()
+            .clamp(0, self.n_bins - 1)
+            .to(torch.uint8)
+        )
 
         # 3. Packing (The size reduction step)
         original_shape = q_indices.shape
         q_flat = q_indices.flatten()
-        
+
         # Calculate padding needed to make the tensor length divisible by 4 (for 2-bit packing)
         packing_rate = 4  # 4 indices * 2 bits = 8 bits (1 byte)
         padding_len = (packing_rate - (q_flat.numel() % packing_rate)) % packing_rate
-        
+
         if padding_len > 0:
             # Pad with zeros (index 0, which corresponds to the smallest magnitude)
-            q_flat = torch.cat([q_flat, torch.zeros(padding_len, dtype=torch.uint8, device=q_flat.device)])
+            q_flat = torch.cat(
+                [
+                    q_flat,
+                    torch.zeros(padding_len, dtype=torch.uint8, device=q_flat.device),
+                ]
+            )
 
         # Reshape to (N/4, 4) where N is the padded length
         q_reshaped = q_flat.view(-1, packing_rate)
-        
+
         # Pack 4 indices into 1 byte using bitwise shifts
         # Byte = [idx0] | [idx1 << 2] | [idx2 << 4] | [idx3 << 6]
         q_packed = (
-            q_reshaped[:, 0] | 
-            (q_reshaped[:, 1] << 2) | 
-            (q_reshaped[:, 2] << 4) | 
-            (q_reshaped[:, 3] << 6)
+            q_reshaped[:, 0]
+            | (q_reshaped[:, 1] << 2)
+            | (q_reshaped[:, 2] << 4)
+            | (q_reshaped[:, 3] << 6)
         )
-        
+
         # Payload (q_packed) and Metadata (shift, scale, shape, padding)
         return q_packed, (shift, scale, original_shape, padding_len)
 
@@ -439,35 +451,47 @@ class UniformKBitQuantizer(Quantizer):
         # return q, (shift, lookup, val.dtype)
 
     @torch.no_grad()
-    def dequantize(self, q_packed: torch.Tensor, meta: Tuple[torch.Tensor, torch.Tensor, torch.Size, int]):
+    def dequantize(
+        self,
+        q_packed: torch.Tensor,
+        meta: Tuple[torch.Tensor, torch.Tensor, torch.Size, int],
+    ):
         # shift, lookup, dtype = meta
         # return (lookup[q.long()] + shift).to(dtype)
         shift, scale, shape, padding_len = meta
         offset = self.n_bins // 2
-        
+
         # 1. UNPACKING
-        mask = torch.tensor(3, dtype=torch.uint8, device=q_packed.device) # 0b11
-        
+        mask = torch.tensor(3, dtype=torch.uint8, device=q_packed.device)  # 0b11
+
         # Extract indices by shifting and masking
         # torch.stack creates a tensor of shape (4, N_packed)
-        unpacked = torch.stack([
-            (q_packed) & mask,
-            (q_packed >> 2) & mask,
-            (q_packed >> 4) & mask,
-            (q_packed >> 6) & mask
-        ], dim=0).transpose(0, 1).flatten() # (N_packed, 4) -> flatten
-        
+        unpacked = (
+            torch.stack(
+                [
+                    (q_packed) & mask,
+                    (q_packed >> 2) & mask,
+                    (q_packed >> 4) & mask,
+                    (q_packed >> 6) & mask,
+                ],
+                dim=0,
+            )
+            .transpose(0, 1)
+            .flatten()
+        )  # (N_packed, 4) -> flatten
+
         # Remove padding
         if padding_len > 0:
             unpacked = unpacked[:-padding_len]
-            
+
         # Reshape to original gradient shape
         q_indices = unpacked.view(shape)
-        
+
         # 2. Dequantization (Indices -> Float)
         # Reconstruct the float value: (q - offset) * scale + shift
         # We must convert to float for the arithmetic
         return (q_indices.float() - offset) * scale + shift
+
 
 class Sparsifier(ABC):
     @abstractmethod
@@ -477,6 +501,7 @@ class Sparsifier(ABC):
     @abstractmethod
     def desparsify(self, payload, meta, ref: torch.Tensor):
         pass
+
 
 class ChunkingTransform:
     """Handles tensor chunking, with an optional DCT for DeMo reproduction."""
@@ -565,6 +590,7 @@ class ChunkingTransform:
             x = self.einsum_2d_t(x, n1w, n2w)
         return rearrange(x, "y x h w -> (y h) (x w)")
 
+
 class ChunkedTopKSparsifier(Sparsifier):
     def __init__(self, chunking: ChunkingTransform, k: int, random=False):
         self.chunking = chunking
@@ -602,12 +628,13 @@ class ChunkedTopKSparsifier(Sparsifier):
 
 
 class Compression:
-    def __init__(self, sparsifier: Optional[Sparsifier], quantizer: Optional[Quantizer]):
+    def __init__(
+        self, sparsifier: Optional[Sparsifier], quantizer: Optional[Quantizer]
+    ):
         self.sparsifier = sparsifier
         self.quantizer = quantizer
 
     def compress(self, x: torch.Tensor):
-
         if self.sparsifier:
             payload, s_meta = self.sparsifier.sparsify(x)
         else:
@@ -630,6 +657,7 @@ class Compression:
             payload = self.sparsifier.desparsify(payload, s_meta, ref)
 
         return payload
+
 
 # DILOCO COMMUNICATOR
 class DiLoCoCommunicator(CommunicationModule):
@@ -666,7 +694,7 @@ class DiLoCoCommunicator(CommunicationModule):
             # for param in model.parameters():
             #     # all_reduce(param.data, op=dist.ReduceOp.SUM)
             #     # param.data /= num_nodes
-                
+
             #     # Error feedback + Compression
             #     x = param.data + self.error_buffers[param]
             #     print(self.compression)
@@ -717,9 +745,9 @@ class DiLoCoCommunicator(CommunicationModule):
 
             #         self.outer_optimizer.step()
             #         self._synchronize_master_model(model)
-            
+
             # else:
-                
+
             #     # Average worker parameters (DiLoCo step)
             #     for param in model.parameters():
             #         all_reduce(param.data, op=dist.ReduceOp.SUM, group=self.process_group)
@@ -730,15 +758,15 @@ class DiLoCoCommunicator(CommunicationModule):
             #     self.outer_optimizer.step()
             #     self._synchronize_master_model(model)
 
-            # New DiLoCo with All-Gather + Compression   
-            if self.compression is not None:             
+            # New DiLoCo with All-Gather + Compression
+            if self.compression is not None:
                 # 1. Zero Outer Optimizer and Prepare Master Gradient (delta)
                 self.outer_optimizer.zero_grad()
                 self._set_master_grad(model)
 
                 for name, p in self.master_model.named_parameters():
-                    delta = p.grad # MasterParam - WorkerParam
-                    
+                    delta = p.grad  # MasterParam - WorkerParam
+
                     # 2. Apply Error Feedback and Compress (Locally)
                     delta_ef = delta + self.error_buffers[name]
 
@@ -747,11 +775,11 @@ class DiLoCoCommunicator(CommunicationModule):
                     q_packed, meta = self.compression.compress(delta_ef)
                     # print(len(meta))
                     (s_meta, q_meta) = meta
-                    
+
                     # Stack shift and scale into a tiny tensor for communication
                     shift, scale, shape, padding = q_meta
                     meta_payload = torch.stack([shift, scale])
-                    
+
                     # --- 3. COMMUNICATION PHASE: All-Gather ---
                     # a) All-Gather Metadata (Crucial for correct decompression)
                     # We need N copies of the 2-float tensor
@@ -762,10 +790,12 @@ class DiLoCoCommunicator(CommunicationModule):
 
                     # b) All-Gather Compressed Packed Data (Memory-Efficient Loop)
                     # We use a temporary buffer (instead of N buffers) and sum them up
-                    delta_sum = torch.zeros_like(p) # The final aggregated update
-                    
+                    delta_sum = torch.zeros_like(p)  # The final aggregated update
+
                     # List to hold all gathered packed tensors (must be done to use all_gather API)
-                    gathered_q_list = [torch.empty_like(q_packed) for _ in range(num_nodes)]
+                    gathered_q_list = [
+                        torch.empty_like(q_packed) for _ in range(num_nodes)
+                    ]
 
                     # Perform the all-gather
                     all_gather(gathered_q_list, q_packed, group=self.process_group)
@@ -776,23 +806,25 @@ class DiLoCoCommunicator(CommunicationModule):
                         node_q = gathered_q_list[i]
                         node_shift = gathered_metas[i][0]
                         node_scale = gathered_metas[i][1]
-                        
+
                         # Reconstruct meta for node i (shape/padding is fixed for this tensor)
                         node_meta = (node_shift, node_scale, shape, padding)
-                        
+
                         # Decompress back to full precision (on the local device)
-                        delta_node_i = self.compression.decompress(node_q, (s_meta, node_meta), ref=p)
-                        
+                        delta_node_i = self.compression.decompress(
+                            node_q, (s_meta, node_meta), ref=p
+                        )
+
                         # Accumulate the sum
                         delta_sum += delta_node_i
-                        
-                    delta_hat = delta_sum / num_nodes # The final averaged update
+
+                    delta_hat = delta_sum / num_nodes  # The final averaged update
 
                     # --- 5. ERROR FEEDBACK AND OPTIMIZER STEP ---
                     # Calculate the error for the local node (using the locally quantized version)
                     my_delta_hat = self.compression.decompress(q_packed, meta, ref=p)
                     self.error_buffers[name].copy_(delta_ef - my_delta_hat)
-                    
+
                     # The outer optimizer steps using the global average
                     p.grad.copy_(delta_hat)
 
@@ -803,7 +835,9 @@ class DiLoCoCommunicator(CommunicationModule):
             else:
                 # Average worker parameters (DiLoCo step)
                 for param in model.parameters():
-                    all_reduce(param.data, op=dist.ReduceOp.SUM, group=self.process_group)
+                    all_reduce(
+                        param.data, op=dist.ReduceOp.SUM, group=self.process_group
+                    )
                     param.data /= num_nodes
 
                 self.outer_optimizer.zero_grad()
@@ -881,7 +915,7 @@ class DiLoCoStrategy(CommunicateOptimizeStrategy):
 
         # Create the DiLoCo communicator
         self.diloco_comm = DiLoCoCommunicator(
-            H=H, 
+            H=H,
             outer_optim_spec=outer_optim_spec,
             compression=compression,
             process_group=process_group,

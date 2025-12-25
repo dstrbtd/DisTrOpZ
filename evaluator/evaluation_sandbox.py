@@ -1,4 +1,8 @@
 import logging.handlers
+import torch
+import gc
+import logging
+import os
 
 # Patch stdlib's QueueListener to ignore EOFError
 if not hasattr(logging.handlers.QueueListener, "_orig_monitor"):
@@ -12,11 +16,18 @@ if not hasattr(logging.handlers.QueueListener, "_orig_monitor"):
 
     logging.handlers.QueueListener._monitor = _safe_monitor
 
-import json, os, importlib.util, sys, traceback
+import json, importlib.util, sys, traceback
 from exogym.trainer import Trainer
 from nanogpt import GPT, GPTConfig, get_dataset
 import bittensor as bt
-import sys
+
+# Set up logging - will output to stdout which gets captured by parent process
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout,
+)
+logger = logging.getLogger(__name__)
 
 NUM_NODES = int(os.getenv("NUM_NODES", "2"))
 MAX_STEPS = int(os.getenv("MAX_STEPS", "2"))
@@ -24,8 +35,8 @@ MODEL_SIZE = os.getenv("MODEL_SIZE", "small")
 DATASET = os.getenv("DATASET", "shakespeare")
 DEVICE = os.getenv("DEVICE", "cuda")
 
-print("MAX_STEPS", MAX_STEPS)
-print("NUM_NODES", NUM_NODES)
+logger.info(f"MAX_STEPS: {MAX_STEPS}")
+logger.info(f"NUM_NODES: {NUM_NODES}")
 
 
 def load_strategy(path):
@@ -74,12 +85,34 @@ def main():
             "loss": float(metrics_out.get("eval_loss", 0.0)),
             "communication": int(metrics_out.get("comm_bytes_total", 0)),
         }
-        print("\n" + json.dumps(result))  # output to stdout
+        logger.info(f"Training completed. Metrics: {result}")
+        print("\n" + json.dumps(result))  # output to stdout for parent process to parse
 
     except Exception as e:
-        print(json.dumps({"error": str(e)}))
+        logger.error(f"Sandbox execution failed: {e}", exc_info=True)
+        print(
+            json.dumps({"error": str(e)})
+        )  # output to stdout for parent process to parse
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
+
+    finally:
+        # Explicit cleanup
+        try:
+            if "model" in locals():
+                del model
+            if "trainer" in locals():
+                del trainer
+            if "train_dataset" in locals():
+                del train_dataset
+            if "val_dataset" in locals():
+                del val_dataset
+        except:
+            pass
+        if DEVICE == "cuda" and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        gc.collect()
 
 
 if __name__ == "__main__":
