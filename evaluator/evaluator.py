@@ -11,10 +11,8 @@ import torch
 import logging
 from logger import setup_loki_logging, add_sandbox_handler
 
-# --- Config ---
+# Config
 SANDBOX_IMAGE = "distropz_sandbox"
-MAX_RUNTIME = 900  # seconds
-
 WHITELISTED_HOTKEYS = [
     "5ECDEtiHDP7tXeG3L7PViHsjSUPCsijKEokrFWhdXuATDjH1",
     "5EvvqR8EJhQYVyk6avp2dpkLymR95StUqPoRSSN7sD9FUSWj",
@@ -23,7 +21,6 @@ WHITELISTED_HOTKEYS = [
     "5HW6iTCNfk9xRmNbFv7PKGpJL99JU2wzco4ABJxywKZGgjJA",
     "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg",
 ]
-
 
 # Validate the metrics schema and confirm each metric is within bounds
 def validate_metrics(metrics):
@@ -121,9 +118,7 @@ def run_in_sandbox(gist_path, config, sandbox_logger=None):
     return validate_metrics(metrics)
 
 
-# ------------------------------------------------------
-# 3. Insert verified metrics into DB (trusted context)
-# ------------------------------------------------------
+# Insert verified metrics into DB
 def log_to_db(
     write_api, hotkey, uid, metrics, config, gist_url, current_block, benchmark_flag
 ):
@@ -143,19 +138,14 @@ def log_to_db(
         .tag("benchmark_flag", benchmark_flag)
         .time(datetime.datetime.now(datetime.timezone.utc), WritePrecision.NS)
     )
-    bt.logging.info("Checkpoint 1")
     for k, v in metrics.items():
         point.field(k, v)
-    bt.logging.info("Checkpoint 2")
     write_api.write(
         bucket=config.influxdb.bucket, org=config.influxdb.org, record=point
     )
-    bt.logging.info("Checkpoint 3")
 
 
-# -------------------------------------------------------------------------------
-# 4. Validate a single miner: fetch gist, verify hash, run sandbox, log results
-# -------------------------------------------------------------------------------
+# Validate a single miner: fetch gist, verify hash, run sandbox, log results
 def validate_miner(
     hotkey,
     gist_url,
@@ -306,7 +296,7 @@ def main():
     urls = {}
 
     for benchmark in os.listdir("/root/DisTrOpZ/miner/"):
-        if benchmark == "miner_base.py" or benchmark == "miner.py":
+        if benchmark == "miner_base.py" or benchmark == "miner.py" or "sparta" in benchmark:
             continue
 
         bt.logging.info(f"🔍 Running benchmark for {benchmark}")
@@ -337,9 +327,6 @@ def main():
         except Exception as e:
             bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
 
-        # finally:
-        #     break
-
     for uid, hotkey in enumerate(metagraph.hotkeys):
         bt.logging.info(f"🔍 Checking miner UID={uid} hotkey={hotkey}")
 
@@ -368,8 +355,9 @@ def main():
         except Exception as e:
             bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
 
-        # finally:
-        #     break
+    # Opening JSON file
+    # with open('/root/DisTrOpZ/results/metrics-gpt-medium-owt-4-100-2025-12-25.json') as json_file: metrics = json.load(json_file)
+    # urls = {k:k for k in metrics.keys()}
 
     df = pd.DataFrame(metrics).T
 
@@ -392,16 +380,6 @@ def main():
         + (1 / 3) * df["communication_norm"]
     )
 
-    # query = f"""
-    # from(bucket: "{config.influxdb.bucket}")
-    #   |> range(start: -30d)
-    #   |> filter(fn: (r) => r._measurement == "{INFLUXDB_MEASUREMENT}")
-    #   |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-    # """
-    # read_api.query(query)
-    # df_query = read_api.query_data_frame(query)
-    # df_query = pd.concat(df_query)
-
     benchmark = None
     for hotkey in metrics.keys():
         if hotkey in urls:
@@ -412,8 +390,9 @@ def main():
             else:
                 uid = metagraph.hotkeys.index(hotkey)
                 benchmark = False
-            # breakpoint()
+            breakpoint()
             metrics[hotkey]["score"] = df.at[hotkey, "score"]
+            breakpoint()
             log_to_db(
                 write_api,
                 hotkey,
@@ -425,13 +404,6 @@ def main():
                 benchmark,
             )
             bt.logging.info(f"Logged {hotkey} metrics")
-
-    # df_query_2 = read_api.query_data_frame(query)
-    # df_query_2 = pd.concat(df_query_2)
-    # breakpoint()
-
-    # df_query_3 = read_api.query_data_frame(query)
-    # df_query_3 = pd.concat(df_query_3)
 
     # save results
     with open(out_path, "w") as f:
