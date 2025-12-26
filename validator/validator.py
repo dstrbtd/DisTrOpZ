@@ -12,7 +12,6 @@ from evaluator.logger import setup_loki_logging
 
 STARTING_LOSS = 11.00
 
-
 def fetch_metrics_for_all_hotkeys(client, config):
     # Step 1: Find the maximum block number for these config parameters (no restrictive time range needed)
     influxdb_measurement = "hotkeys_scores"
@@ -155,7 +154,7 @@ def fetch_benchmark_scores(client, config):
 
 def main():
     parser = argparse.ArgumentParser(description="Simple validator script")
-    parser.add_argument("--netuid", type=int, default=220)
+    parser.add_argument("--netuid", type=int, default=38)
     parser.add_argument(
         "--number_of_nodes",
         type=int,
@@ -269,14 +268,14 @@ def main():
             or (current_winner_throughput_score >= benchmark_throughput_score)
         ):
             # Burn hotkey
-            current_winner_hotkey = "5ECDEtiHDP7tXeG3L7PViHsjSUPCsijKEokrFWhdXuATDjH1"
+            current_winner_hotkey = "5EnC86fRRRoaXUZvkrDFYpAihuyEAp3wGkY5r3Gak1kPTDVP"
             current_winner_score = 0.5
 
             # Save current winner data
             current_winner_data = {
-                "throughput": 67409,
-                "loss": 10.789522171020508,
-                "communication": 353439776,
+                "throughput": benchmark_throughput_score,
+                "loss": benchmark_loss_score,
+                "communication": benchmark_communication_score,
                 "score": current_winner_score,
                 "last_update": datetime.datetime.now().isoformat(),
             }
@@ -330,6 +329,7 @@ def main():
                 netuid=config.netuid,
                 weights=weights,
                 uids=list(range(len(weights))),
+                mechid=1
             )
         else:
             bt.logging.warning(
