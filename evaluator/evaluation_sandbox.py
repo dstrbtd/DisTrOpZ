@@ -50,7 +50,9 @@ def load_strategy(path):
 
 def main():
     # Miner script is mounted at /sandbox/strategy.py
-    script_path = "/root/DisTrOpZ/evaluator/sandbox/strategy.py"
+    # script_path = "/root/DisTrOpZ/evaluator/sandbox/strategy.py"
+    # script_path = "/app/sandbox/strategy.py"
+    script_path = "/sandbox/strategy.py"
     try:
         strategy = script_path
         train_dataset, _ = get_dataset(

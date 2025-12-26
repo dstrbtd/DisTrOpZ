@@ -28,8 +28,7 @@ def create_gist(file_path, token, desc):
 
 
 def commit_to_chain(gist_url, digest, netuid, wallet, subtensor):
-    return subtensor.commit(wallet, netuid, digest + gist_url)
-
+    return subtensor.set_commitment(wallet, netuid, digest + gist_url)
 
 def main():
     parser = argparse.ArgumentParser(description="Miner script")
@@ -44,9 +43,9 @@ def main():
     parser.add_argument(
         "--netuid", type=int, default=220, help="Bittensor network UID."
     )
-    bt.wallet.add_args(parser)
-    bt.subtensor.add_args(parser)
-    config = bt.config(parser)
+    bt.Wallet.add_args(parser)
+    bt.Subtensor.add_args(parser)
+    config = bt.Config(parser)
 
     token = config.github.token or os.getenv("GITHUB_TOKEN")
     if not token:
@@ -54,8 +53,8 @@ def main():
 
     bt.logging.setLevel("INFO")
     bt.logging.info(config)
-    wallet = bt.wallet(config=config)
-    subtensor = bt.subtensor(config=config)
+    wallet = bt.Wallet(config=config)
+    subtensor = bt.Subtensor(config=config)
 
     if not subtensor.is_hotkey_registered(
         netuid=config.netuid,

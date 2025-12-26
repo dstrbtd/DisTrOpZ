@@ -44,34 +44,35 @@ def validate_metrics(metrics):
 
 # Execute untrusted miner gist inside sandbox container
 def run_in_sandbox(gist_path, config, sandbox_logger=None):
-    # # Install docker on something other than runpod
-    # cmd = [
-    #     "docker",
-    #     "run",
-    #     "--rm",
-    #     "--gpus",
-    #     "all",
-    #     "--network=none",
-    #     # "--cpus=2",
-    #     # "--memory=4g",
-    #     "--shm-size=8g",
-    #     # environment variables (each one must be a separate -e)
-    #     "-e",
-    #     f"NUM_NODES={config.number_of_nodes}",
-    #     "-e",
-    #     f"MAX_STEPS={config.max_steps}",
-    #     "-e",
-    #     f"DATASET={config.dataset}",
-    #     "-e",
-    #     f"MODEL_SIZE={config.model_size}",
-    #     # volume mount
-    #     "-v",
-    #     f"{gist_path}:/app/sandbox/strategy.py:ro",
-    #     # image name
-    #     SANDBOX_IMAGE,
-    # ]
+    # Install docker on something other than runpod
+    cmd = [
+        "docker",
+        "run",
+        "--rm",
+        "--gpus",
+        "all",
+        "--network=none",
+        # "--cpus=2",
+        # "--memory=4g",
+        "--shm-size=8g",
+        # environment variables (each one must be a separate -e)
+        "-e",
+        f"NUM_NODES={config.number_of_nodes}",
+        "-e",
+        f"MAX_STEPS={config.max_steps}",
+        "-e",
+        f"DATASET={config.dataset}",
+        "-e",
+        f"MODEL_SIZE={config.model_size}",
+        # volume mount
+        "-v",
+        # f"{gist_path}:/app/sandbox/strategy.py:ro",
+        f"{gist_path}:sandbox/strategy.py:ro",
+        # image name
+        SANDBOX_IMAGE,
+    ]
     bt.logging.info(f"Running sandbox with strategy: {gist_path}")
-    cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
+    # cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
 
     process = subprocess.Popen(
         cmd,
@@ -163,8 +164,8 @@ def validate_miner(
 
         # Fetch gist
         match = re.search(r"([0-9a-fA-F]{8,})$", gist_url)
-        if hotkey not in WHITELISTED_HOTKEYS:
-            raise ValueError(f"Hotkey {hotkey} not in whitelist")
+        # if hotkey not in WHITELISTED_HOTKEYS:
+        #     raise ValueError(f"Hotkey {hotkey} not in whitelist")
         if not match:
             raise ValueError(f"Could not parse gist ID from URL: {gist_url}")
         gist_id = match.group(1)
@@ -247,7 +248,7 @@ def main():
         "--output_dir", type=str, default="results", help="Results directory"
     )
     parser.add_argument(
-        "--netuid", type=int, default=178, help="Bittensor network UID."
+        "--netuid", type=int, default=38, help="Bittensor network UID."
     )
     parser.add_argument("--influxdb.measurement", default="mechanism-1")
     parser.add_argument("--influxdb.bucket", required=True)
@@ -258,10 +259,10 @@ def main():
     )
 
     # Add wallet arguments
-    bt.wallet.add_args(parser)
-    bt.subtensor.add_args(parser)
+    bt.Wallet.add_args(parser)
+    bt.Subtensor.add_args(parser)
     bt.logging.add_args(parser)
-    config = bt.config(parser)
+    config = bt.Config(parser)
     bt.logging.setLevel("INFO")
 
     # Set up Loki logging for evaluator
@@ -271,7 +272,7 @@ def main():
     sandbox_logger, sandbox_listener = add_sandbox_handler(config=config)
 
     # Add subtensor and metagraph arguments
-    subtensor = bt.subtensor(config=config)
+    subtensor = bt.Subtensor(config=config)
     metagraph = subtensor.metagraph(config.netuid)
     current_block = subtensor.block
     bt.logging.info(f"Loaded metagraph with {len(metagraph.hotkeys)} miners.")
@@ -295,120 +296,123 @@ def main():
     metrics = {}
     urls = {}
 
-    for benchmark in os.listdir("/root/DisTrOpZ/miner/"):
-        if benchmark == "miner_base.py" or benchmark == "miner.py" or "sparta" in benchmark:
-            continue
+    # for benchmark in os.listdir("/root/DisTrOpZ/miner/"):
+    #     if benchmark == "miner_base.py" or benchmark == "miner.py" or "sparta" in benchmark:
+    #         continue
 
-        bt.logging.info(f"🔍 Running benchmark for {benchmark}")
+    #     bt.logging.info(f"🔍 Running benchmark for {benchmark}")
 
-        try:
-            gist_url = "benchmark"
-            sha = "benchmark"
-            hotkey = f"benchmark_{benchmark.split('miner_')[-1].replace('.py','')}"
+    #     try:
+    #         gist_url = "benchmark"
+    #         sha = "benchmark"
+    #         hotkey = f"benchmark_{benchmark.split('miner_')[-1].replace('.py','')}"
 
-            # verify and save
-            hotkey_metrics = validate_miner(
-                "",
-                "",
-                "",
-                config,
-                benchmark=True,
-                benchmark_file=benchmark,
-                sandbox_logger=sandbox_logger,
-            )
+    #         # verify and save
+    #         hotkey_metrics = validate_miner(
+    #             "",
+    #             "",
+    #             "",
+    #             config,
+    #             benchmark=True,
+    #             benchmark_file=benchmark,
+    #             sandbox_logger=sandbox_logger,
+    #         )
 
-            urls[hotkey] = hotkey
-            metrics[hotkey] = hotkey_metrics
-            bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
+    #         urls[hotkey] = hotkey
+    #         metrics[hotkey] = hotkey_metrics
+    #         bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
 
-            with open(out_path, "w") as f:
-                json.dump(metrics, f, indent=2)
+    #         with open(out_path, "w") as f:
+    #             json.dump(metrics, f, indent=2)
 
-        except Exception as e:
-            bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
+    #     except Exception as e:
+    #         bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
 
-    for uid, hotkey in enumerate(metagraph.hotkeys):
-        bt.logging.info(f"🔍 Checking miner UID={uid} hotkey={hotkey}")
+    while True:
+        for uid, hotkey in enumerate(metagraph.hotkeys):
+            bt.logging.info(f"🔍 Checking miner UID={uid} hotkey={hotkey}")
 
-        try:
-            meta = subtensor.get_commitment(netuid=config.netuid, uid=uid)
-            if not meta:
-                bt.logging.warning(f"❌ No strategy_gist for {hotkey}")
-                continue
+            try:
+                meta = subtensor.get_commitment(netuid=config.netuid, uid=uid)
+                if not meta:
+                    bt.logging.warning(f"❌ No strategy_gist for {hotkey}")
+                    continue
 
-            gist_url = meta[64:]
-            sha = meta[:64]
-            bt.logging.info(f"Found gist: {gist_url}")
+                gist_url = meta[64:]
+                sha = meta[:64]
+                bt.logging.info(f"Found gist: {gist_url}")
 
-            # verify and save
-            hotkey_metrics = validate_miner(
-                hotkey, gist_url, sha, config, sandbox_logger=sandbox_logger
-            )
+                # verify and save
+                hotkey_metrics = validate_miner(
+                    hotkey, gist_url, sha, config, sandbox_logger=sandbox_logger
+                )
 
-            urls[hotkey] = gist_url
-            metrics[hotkey] = hotkey_metrics
-            bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
+                urls[hotkey] = gist_url
+                metrics[hotkey] = hotkey_metrics
+                bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
 
-            with open(out_path, "w") as f:
-                json.dump(metrics, f, indent=2)
+                with open(out_path, "w") as f:
+                    json.dump(metrics, f, indent=2)
 
-        except Exception as e:
-            bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
+                break
 
-    # Opening JSON file
-    # with open('/root/DisTrOpZ/results/metrics-gpt-medium-owt-4-100-2025-12-25.json') as json_file: metrics = json.load(json_file)
-    # urls = {k:k for k in metrics.keys()}
+            except Exception as e:
+                bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
 
-    df = pd.DataFrame(metrics).T
+        # Opening JSON file
+        # with open('/root/DisTrOpZ/results/metrics-gpt-medium-owt-4-100-2025-12-25.json') as json_file: metrics = json.load(json_file)
+        # urls = {k:k for k in metrics.keys()}
 
-    metric_names = ["throughput", "loss", "communication"]
+        df = pd.DataFrame(metrics).T
 
-    # min-max normalize each metric
-    norm = (df[metric_names] - df[metric_names].min()) / (
-        df[metric_names].max() - df[metric_names].min()
-    )
+        metric_names = ["throughput", "loss", "communication"]
+        breakpoint()
+        # min-max normalize each metric
+        norm = (df[metric_names] - df[metric_names].min()) / (
+            df[metric_names].max() - df[metric_names].min()
+        )
 
-    df["throughput_norm"] = norm["throughput"]
-    df["loss_norm"] = 1 - norm["loss"]  # lower loss is better
-    df["communication_norm"] = (
-        1 - norm["communication"]
-    )  # lower communication is better
+        df["throughput_norm"] = norm["throughput"]
+        df["loss_norm"] = 1 - norm["loss"]  # lower loss is better
+        df["communication_norm"] = (
+            1 - norm["communication"]
+        )  # lower communication is better
 
-    df["score"] = (
-        (1 / 3) * df["throughput_norm"]
-        + (1 / 3) * df["loss_norm"]
-        + (1 / 3) * df["communication_norm"]
-    )
+        df["score"] = (
+            (1 / 3) * df["throughput_norm"]
+            + (1 / 3) * df["loss_norm"]
+            + (1 / 3) * df["communication_norm"]
+        )
 
-    benchmark = None
-    for hotkey in metrics.keys():
-        if hotkey in urls:
-            gist_url = urls[hotkey]
-            if "benchmark" in hotkey:
-                uid = hotkey
-                benchmark = True
-            else:
-                uid = metagraph.hotkeys.index(hotkey)
-                benchmark = False
-            breakpoint()
-            metrics[hotkey]["score"] = df.at[hotkey, "score"]
-            breakpoint()
-            log_to_db(
-                write_api,
-                hotkey,
-                uid,
-                metrics[hotkey],
-                config,
-                gist_url,
-                current_block,
-                benchmark,
-            )
-            bt.logging.info(f"Logged {hotkey} metrics")
+        benchmark = None
+        for hotkey in metrics.keys():
+            if hotkey in urls:
+                gist_url = urls[hotkey]
+                if "benchmark" in hotkey:
+                    uid = hotkey
+                    benchmark = True
+                else:
+                    uid = metagraph.hotkeys.index(hotkey)
+                    benchmark = False
+                # breakpoint()
+                metrics[hotkey]["score"] = df.at[hotkey, "score"]
+                # breakpoint()
+                log_to_db(
+                    write_api,
+                    hotkey,
+                    uid,
+                    metrics[hotkey],
+                    config,
+                    gist_url,
+                    current_block,
+                    benchmark,
+                )
+                bt.logging.info(f"Logged {hotkey} metrics")
 
-    # save results
-    with open(out_path, "w") as f:
-        json.dump(metrics, f, indent=2)
-    bt.logging.success(f"Saved metrics → {out_path} → {current_block}")
+        # save results
+        with open(out_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+        bt.logging.success(f"Saved metrics → {out_path} → {current_block}")
 
 
 if __name__ == "__main__":

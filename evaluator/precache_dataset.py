@@ -3,7 +3,7 @@ from nanogpt import get_dataset
 import os
 
 DATASET = os.getenv("DATASET", "owt")
-NUM_NODES = int(os.getenv("NUM_NODES", 2))
+NUM_NODES = int(os.getenv("NUM_NODES", 4))
 
 print(f"📦 Pre-caching dataset: {DATASET} for {NUM_NODES} nodes...")
 

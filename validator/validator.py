@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from evaluator.logger import setup_loki_logging
 
 STARTING_LOSS = 11.00
+DELAY = 60*5
+BURN_HOTKEY = "5EnC86fRRRoaXUZvkrDFYpAihuyEAp3wGkY5r3Gak1kPTDVP"
 
 def fetch_metrics_for_all_hotkeys(client, config):
     # Step 1: Find the maximum block number for these config parameters (no restrictive time range needed)
@@ -151,6 +153,26 @@ def fetch_benchmark_scores(client, config):
         benchmark_throughput_score,
     )
 
+def set_weights(metagraph, subtensor, current_winner_hotkey, wallet, config):
+    # Set weights
+    weights = [0.0] * len(metagraph.hotkeys)
+    if current_winner_hotkey in metagraph.hotkeys:
+        idx = metagraph.hotkeys.index(current_winner_hotkey)
+        weights[idx] = 1.0
+        bt.logging.info(f"Setting weight=1 for {current_winner_hotkey}")
+        subtensor.set_weights(
+            wallet=wallet,
+            netuid=config.netuid,
+            weights=weights,
+            uids=list(range(len(weights))),
+            mechid=1
+        )
+    else:
+        bt.logging.warning(
+            f"Hotkey {current_winner_hotkey} not found in metagraph."
+        )
+
+    metagraph.sync(subtensor=subtensor)
 
 def main():
     parser = argparse.ArgumentParser(description="Simple validator script")
@@ -180,18 +202,18 @@ def main():
     )
 
     # Add wallet arguments
-    bt.wallet.add_args(parser)
-    bt.subtensor.add_args(parser)
+    bt.Wallet.add_args(parser)
+    bt.Subtensor.add_args(parser)
     bt.logging.add_args(parser)
-    config = bt.config(parser)
+    config = bt.Config(parser)
     bt.logging.setLevel("INFO")
 
     # Set up Loki logging for validator
     loki_listener = setup_loki_logging(config=config, component="validator")
 
     # Add subtensor and metagraph arguments
-    wallet = bt.wallet(config=config)
-    subtensor = bt.subtensor(config=config)
+    wallet = bt.Wallet(config=config)
+    subtensor = bt.Subtensor(config=config)
     metagraph = subtensor.metagraph(config.netuid)
     bt.logging.info(f"Loaded metagraph with {len(metagraph.hotkeys)} miners.")
 
@@ -219,18 +241,31 @@ def main():
     )
 
     while True:
+        (
+            benchmark_loss_score,
+            benchmark_communication_score,
+            benchmark_throughput_score,
+        ) = fetch_benchmark_scores(client, config)
+
         df = fetch_metrics_for_all_hotkeys(
             client,
             config,
         )
+
         if df.empty:
-            bt.logging.info("No metrics found in InfluxDB. Waiting for 60 seconds.")
-            time.sleep(60)
+            bt.logging.info(f"No metrics found in InfluxDB. Waiting for {DELAY} seconds.")
+            set_weights(metagraph, subtensor, BURN_HOTKEY, wallet, config)
+            time.sleep(DELAY)
+            continue
 
         metrics = ["throughput", "communication", "loss", "last_update"]
         df = df.dropna(subset=metrics, how="any")
+        
         if df.empty:
-            sys.exit("Not enough valid metrics to evaluate.")
+            set_weights(metagraph, subtensor, BURN_HOTKEY, wallet, config)
+            bt.logging.info("Not enough valid metrics to evaluate. Waiting for {DELAY} seconds.")
+            time.sleep(DELAY)
+            continue
 
         # Convert last_update_dt to datetime
         df["last_update_dt"] = pd.to_datetime(df["last_update"], utc=True)
@@ -256,19 +291,13 @@ def main():
             df.hotkey == current_winner_hotkey, "throughput"
         ].item()
 
-        (
-            benchmark_loss_score,
-            benchmark_communication_score,
-            benchmark_throughput_score,
-        ) = fetch_benchmark_scores(client, config)
-
         if (
             (current_winner_loss_score <= benchmark_loss_score)
             or (current_winner_communication_score <= benchmark_communication_score)
             or (current_winner_throughput_score >= benchmark_throughput_score)
         ):
             # Burn hotkey
-            current_winner_hotkey = "5EnC86fRRRoaXUZvkrDFYpAihuyEAp3wGkY5r3Gak1kPTDVP"
+            current_winner_hotkey = BURN_HOTKEY
             current_winner_score = 0.5
 
             # Save current winner data
@@ -318,26 +347,9 @@ def main():
             f"🏆 Top miner: {current_winner_hotkey} (score={current_winner_score:.3f})"
         )
 
-        # Set weights
-        weights = [0.0] * len(metagraph.hotkeys)
-        if current_winner_hotkey in metagraph.hotkeys:
-            idx = metagraph.hotkeys.index(current_winner_hotkey)
-            weights[idx] = 1.0
-            bt.logging.info(f"Setting weight=1 for {current_winner_hotkey}")
-            subtensor.set_weights(
-                wallet=wallet,
-                netuid=config.netuid,
-                weights=weights,
-                uids=list(range(len(weights))),
-                mechid=1
-            )
-        else:
-            bt.logging.warning(
-                f"Hotkey {current_winner_hotkey} not found in metagraph."
-            )
+        set_weights(metagraph, subtensor, current_winner_hotkey, wallet, config)
 
-        metagraph.sync(subtensor=subtensor)
-        time.sleep(120)
+        time.sleep(DELAY)
 
 
 if __name__ == "__main__":
