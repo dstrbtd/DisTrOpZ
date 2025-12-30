@@ -68,14 +68,14 @@ def main():
         model = GPT(GPTConfig.gpt2_size_map(MODEL_SIZE))
         trainer = Trainer(model, train_dataset, val_dataset, device=DEVICE)
 
-        _, metrics_out = trainer.fit(
+        metrics_out = trainer.fit(
             max_steps=MAX_STEPS,
             strategy=strategy,
             num_epochs=1,
             num_nodes=NUM_NODES,
             device=DEVICE,
             batch_size=256,
-            minibatch_size=2,
+            minibatch_size=16,
             shuffle=False,
             val_size=256,
             val_interval=10,

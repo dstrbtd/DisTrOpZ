@@ -11,8 +11,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from evaluator.logger import setup_loki_logging
 
 STARTING_LOSS = 11.00
-DELAY = 60*5
-BURN_HOTKEY = "5EnC86fRRRoaXUZvkrDFYpAihuyEAp3wGkY5r3Gak1kPTDVP"
+DELAY = 60 * 5
+BURN_HOTKEY = "5EFJ7mEVyjxT3iXqxuHyMMuGgJKFt85tb5s4vEvnCTpSoP3w"
+
 
 def fetch_metrics_for_all_hotkeys(client, config):
     # Step 1: Find the maximum block number for these config parameters (no restrictive time range needed)
@@ -153,6 +154,7 @@ def fetch_benchmark_scores(client, config):
         benchmark_throughput_score,
     )
 
+
 def set_weights(metagraph, subtensor, current_winner_hotkey, wallet, config):
     # Set weights
     weights = [0.0] * len(metagraph.hotkeys)
@@ -160,19 +162,27 @@ def set_weights(metagraph, subtensor, current_winner_hotkey, wallet, config):
         idx = metagraph.hotkeys.index(current_winner_hotkey)
         weights[idx] = 1.0
         bt.logging.info(f"Setting weight=1 for {current_winner_hotkey}")
+        # breakpoint()
+        # subtensor.set_weights(wallet=wallet, netuid=config.netuid, weights=weights, uids=list(range(len(weights))), mechid=1)
         subtensor.set_weights(
             wallet=wallet,
             netuid=config.netuid,
             weights=weights,
             uids=list(range(len(weights))),
-            mechid=1
+            mechid=1,
+        )
+        subtensor.set_weights(
+            wallet=wallet,
+            netuid=config.netuid,
+            weights=weights,
+            uids=list(range(len(weights))),
+            mechid=0,
         )
     else:
-        bt.logging.warning(
-            f"Hotkey {current_winner_hotkey} not found in metagraph."
-        )
+        bt.logging.warning(f"Hotkey {current_winner_hotkey} not found in metagraph.")
 
     metagraph.sync(subtensor=subtensor)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Simple validator script")
@@ -239,7 +249,8 @@ def main():
     client = InfluxDBClient(
         url=config.influxdb.url, token=config.influxdb.token, org=config.influxdb.org
     )
-
+    # set_weights(metagraph, subtensor, BURN_HOTKEY, wallet, config)
+    # breakpoint()
     while True:
         (
             benchmark_loss_score,
@@ -253,18 +264,22 @@ def main():
         )
 
         if df.empty:
-            bt.logging.info(f"No metrics found in InfluxDB. Waiting for {DELAY} seconds.")
+            bt.logging.info(
+                f"No metrics found in InfluxDB. Waiting for {120*12} seconds."
+            )
             set_weights(metagraph, subtensor, BURN_HOTKEY, wallet, config)
-            time.sleep(DELAY)
+            time.sleep(120 * 12)
             continue
 
         metrics = ["throughput", "communication", "loss", "last_update"]
         df = df.dropna(subset=metrics, how="any")
-        
+
         if df.empty:
             set_weights(metagraph, subtensor, BURN_HOTKEY, wallet, config)
-            bt.logging.info("Not enough valid metrics to evaluate. Waiting for {DELAY} seconds.")
-            time.sleep(DELAY)
+            bt.logging.info(
+                "Not enough valid metrics to evaluate. Waiting for {120*12} seconds."
+            )
+            time.sleep(120 * 12)
             continue
 
         # Convert last_update_dt to datetime

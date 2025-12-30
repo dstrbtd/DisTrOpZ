@@ -33,15 +33,20 @@ COPY evaluator/precache_dataset.py ./precache_dataset.py
 RUN python3 -m pip install --upgrade pip && \
     python3 -m pip install --no-cache-dir -e .
 
-# --- Pre-cache the dataset ---
-RUN mkdir -p /app/data && \
-    python3 precache_dataset.py && \
-    chown -R 1001:1001 /app
+# # --- Prepare data directory (dataset will be mounted at runtime) ---
+# RUN mkdir -p /app/data && chown -R 1001:1001 /app
+# # NOTE: Mount the dataset at runtime with: -v /path/to/owt-data:/app/data
 
 RUN mkdir -p /sandbox && chmod 755 /sandbox
 
 # --- Create unprivileged user safely ---
 RUN id -u sandboxuser 2>/dev/null || useradd -m -u 1001 sandboxuser
+
+# --- Create data directory with proper permissions ---
+RUN mkdir -p /app/data && chown -R sandboxuser:sandboxuser /app/data
+
+# --- Pre-cache the dataset during build (needs network) ---
+RUN python3 precache_dataset.py && chown -R sandboxuser:sandboxuser /app/data
 
 # --- Switch to unprivileged user ---
 USER sandboxuser

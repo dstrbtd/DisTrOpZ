@@ -24,11 +24,12 @@ def create_gist(file_path, token, desc):
         data=json.dumps(payload),
     )
     r.raise_for_status()
-    return r.json()["html_url"]
+    return r.json()["id"]
 
 
 def commit_to_chain(gist_url, digest, netuid, wallet, subtensor):
     return subtensor.set_commitment(wallet, netuid, digest + gist_url)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Miner script")

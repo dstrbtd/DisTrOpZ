@@ -83,15 +83,16 @@ def setup_loki_logging(config=None, component="evaluator"):
         component: Either "evaluator", "sandbox", or "validator" to tag logs appropriately.
 
     Returns:
-        QueueListener instance that should be kept alive.
+        Tuple of (evaluator_logger, QueueListener) - use evaluator_logger for Loki logs.
     """
     # Configure Bittensor terminal output (if not already configured)
     if config:
         bt.logging(config=config)
 
-    # Prepare root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)  # Capture all levels
+    # Create dedicated evaluator logger (bt.logging bypasses root logger)
+    evaluator_logger = logging.getLogger("evaluator_output")
+    evaluator_logger.setLevel(logging.DEBUG)
+    evaluator_logger.propagate = False  # Don't propagate to root to avoid duplicates
 
     # Loki handler with extra labels
     loki_handler = LokiHandler(
@@ -122,12 +123,12 @@ def setup_loki_logging(config=None, component="evaluator"):
     # Setup queue logging to avoid blocking
     log_queue = Queue(-1)
     queue_handler = QueueHandler(log_queue)
-    root_logger.addHandler(queue_handler)
+    evaluator_logger.addHandler(queue_handler)
 
     listener = QueueListener(log_queue, loki_handler)
     listener.start()
 
-    return listener
+    return evaluator_logger, listener
 
 
 def add_sandbox_handler(config=None):

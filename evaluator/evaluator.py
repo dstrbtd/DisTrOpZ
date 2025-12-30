@@ -8,6 +8,7 @@ import re
 import shutil
 import gc
 import torch
+import time
 import logging
 from logger import setup_loki_logging, add_sandbox_handler
 
@@ -54,7 +55,7 @@ def run_in_sandbox(gist_path, config, sandbox_logger=None):
         "--network=none",
         # "--cpus=2",
         # "--memory=4g",
-        "--shm-size=8g",
+        "--shm-size=64g",
         # environment variables (each one must be a separate -e)
         "-e",
         f"NUM_NODES={config.number_of_nodes}",
@@ -67,12 +68,12 @@ def run_in_sandbox(gist_path, config, sandbox_logger=None):
         # volume mount
         "-v",
         # f"{gist_path}:/app/sandbox/strategy.py:ro",
-        f"{gist_path}:sandbox/strategy.py:ro",
+        f"{gist_path}:/sandbox/strategy.py:ro",
         # image name
         SANDBOX_IMAGE,
     ]
     bt.logging.info(f"Running sandbox with strategy: {gist_path}")
-    # cmd = ["/root/.dto/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
+    # cmd = ["/root/.venv/bin/python", "/root/DisTrOpZ/evaluator/evaluation_sandbox.py"]
 
     process = subprocess.Popen(
         cmd,
@@ -161,7 +162,6 @@ def validate_miner(
 
     if benchmark == False:
         bt.logging.info(f"Evaluating miner {hotkey}")
-
         # Fetch gist
         match = re.search(r"([0-9a-fA-F]{8,})$", gist_url)
         # if hotkey not in WHITELISTED_HOTKEYS:
@@ -169,10 +169,11 @@ def validate_miner(
         if not match:
             raise ValueError(f"Could not parse gist ID from URL: {gist_url}")
         gist_id = match.group(1)
-
+        # breakpoint()
         api_url = f"https://api.github.com/gists/{gist_id}"
         resp = requests.get(api_url)
         last_updated_at = resp.json().get("updated_at")
+        time.sleep(15)
 
         if resp.status_code == 404:
             raise ValueError(f"Gist not found or not public: {gist_url}")
@@ -203,10 +204,11 @@ def validate_miner(
         last_updated_at = datetime.datetime.now().isoformat()
 
     shutil.copy(tmp_path, current_strategy_path)
+    os.chmod(current_strategy_path, 0o644)
 
     try:
         bt.logging.success(f"✅ Run {current_strategy_path} in sandbox")
-
+        # return {} 17 - 256
         metrics = run_in_sandbox(
             current_strategy_path, config, sandbox_logger=sandbox_logger
         )
@@ -265,8 +267,8 @@ def main():
     config = bt.Config(parser)
     bt.logging.setLevel("INFO")
 
-    # Set up Loki logging for evaluator
-    loki_listener = setup_loki_logging(config=config, component="evaluator")
+    # Set up Loki logging for evaluator (returns logger + listener)
+    eval_logger, loki_listener = setup_loki_logging(config=config, component="evaluator")
 
     # Set up separate Loki handler for sandbox logs
     sandbox_logger, sandbox_listener = add_sandbox_handler(config=config)
@@ -276,6 +278,7 @@ def main():
     metagraph = subtensor.metagraph(config.netuid)
     current_block = subtensor.block
     bt.logging.info(f"Loaded metagraph with {len(metagraph.hotkeys)} miners.")
+    eval_logger.info(f"Loaded metagraph with {len(metagraph.hotkeys)} miners.")
 
     # Set up InfluxDB client
     influx = InfluxDBClient(
@@ -331,16 +334,21 @@ def main():
     while True:
         for uid, hotkey in enumerate(metagraph.hotkeys):
             bt.logging.info(f"🔍 Checking miner UID={uid} hotkey={hotkey}")
+            eval_logger.info(f"Checking miner UID={uid} hotkey={hotkey}")
+            if int(uid) == 25:
+                continue
 
             try:
                 meta = subtensor.get_commitment(netuid=config.netuid, uid=uid)
                 if not meta:
                     bt.logging.warning(f"❌ No strategy_gist for {hotkey}")
+                    eval_logger.warning(f"No strategy_gist for {hotkey}")
                     continue
 
                 gist_url = meta[64:]
                 sha = meta[:64]
                 bt.logging.info(f"Found gist: {gist_url}")
+                eval_logger.info(f"Found gist: {gist_url}")
 
                 # verify and save
                 hotkey_metrics = validate_miner(
@@ -350,23 +358,23 @@ def main():
                 urls[hotkey] = gist_url
                 metrics[hotkey] = hotkey_metrics
                 bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
+                eval_logger.info(f"Finished miner {hotkey}: {hotkey_metrics}")
 
                 with open(out_path, "w") as f:
                     json.dump(metrics, f, indent=2)
 
-                break
-
             except Exception as e:
                 bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
+                eval_logger.error(f"Error validating {hotkey}: {e}")
 
         # Opening JSON file
         # with open('/root/DisTrOpZ/results/metrics-gpt-medium-owt-4-100-2025-12-25.json') as json_file: metrics = json.load(json_file)
         # urls = {k:k for k in metrics.keys()}
-
+        eval_logger.info("Creating DF")
         df = pd.DataFrame(metrics).T
-
+        eval_logger.info("Calculating scores")
         metric_names = ["throughput", "loss", "communication"]
-        breakpoint()
+
         # min-max normalize each metric
         norm = (df[metric_names] - df[metric_names].min()) / (
             df[metric_names].max() - df[metric_names].min()
@@ -383,7 +391,7 @@ def main():
             + (1 / 3) * df["loss_norm"]
             + (1 / 3) * df["communication_norm"]
         )
-
+        eval_logger.info("Logging to DB")
         benchmark = None
         for hotkey in metrics.keys():
             if hotkey in urls:
@@ -408,11 +416,13 @@ def main():
                     benchmark,
                 )
                 bt.logging.info(f"Logged {hotkey} metrics")
+                eval_logger.info(f"Logged {hotkey} metrics to DB")
 
         # save results
         with open(out_path, "w") as f:
             json.dump(metrics, f, indent=2)
         bt.logging.success(f"Saved metrics → {out_path} → {current_block}")
+        eval_logger.info(f"Saved metrics to {out_path} at block {current_block}")
 
 
 if __name__ == "__main__":
