@@ -124,9 +124,7 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
             cpu_state_dict[key] = tensor.detach().cpu()
 
         bytes_total, bytes_by_op = comm_bytes()
-        result_queue.put(
-            (rank, metric, {"bytes": bytes_total, "by_op": bytes_by_op})
-        )
+        result_queue.put((rank, metric, {"bytes": bytes_total, "by_op": bytes_by_op}))
 
         dist.destroy_process_group()
 

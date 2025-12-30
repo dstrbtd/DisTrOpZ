@@ -23,6 +23,7 @@ WHITELISTED_HOTKEYS = [
     "5EvFbREcHj3gC9tRCbQ5E4CF25UCAVsJj4pFyzFqHrbgn9Rg",
 ]
 
+
 # Validate the metrics schema and confirm each metric is within bounds
 def validate_metrics(metrics):
     # Metric Schema
@@ -249,9 +250,7 @@ def main():
     parser.add_argument(
         "--output_dir", type=str, default="results", help="Results directory"
     )
-    parser.add_argument(
-        "--netuid", type=int, default=38, help="Bittensor network UID."
-    )
+    parser.add_argument("--netuid", type=int, default=38, help="Bittensor network UID.")
     parser.add_argument("--influxdb.measurement", default="mechanism-1")
     parser.add_argument("--influxdb.bucket", required=True)
     parser.add_argument("--influxdb.org", required=True)
@@ -268,7 +267,9 @@ def main():
     bt.logging.setLevel("INFO")
 
     # Set up Loki logging for evaluator (returns logger + listener)
-    eval_logger, loki_listener = setup_loki_logging(config=config, component="evaluator")
+    eval_logger, loki_listener = setup_loki_logging(
+        config=config, component="evaluator"
+    )
 
     # Set up separate Loki handler for sandbox logs
     sandbox_logger, sandbox_listener = add_sandbox_handler(config=config)

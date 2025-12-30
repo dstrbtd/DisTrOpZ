@@ -101,9 +101,9 @@ def setup_loki_logging(config=None, component="evaluator"):
             "application": "distropz_evaluator",  # Different from distributed_training
             "component": component,  # evaluator or sandbox
             "level": "dynamic",  # Will be overridden dynamically
-            "netuid": str(config.netuid)
-            if config and hasattr(config, "netuid")
-            else None,
+            "netuid": (
+                str(config.netuid) if config and hasattr(config, "netuid") else None
+            ),
         },
         auth=("944477", os.getenv("LOKI_KEY")),
         version="1",
@@ -152,9 +152,9 @@ def add_sandbox_handler(config=None):
             "application": "distropz_evaluator",
             "component": "sandbox",
             "level": "dynamic",
-            "netuid": str(config.netuid)
-            if config and hasattr(config, "netuid")
-            else None,
+            "netuid": (
+                str(config.netuid) if config and hasattr(config, "netuid") else None
+            ),
         },
         auth=("944477", os.getenv("LOKI_KEY")),
         version="1",
