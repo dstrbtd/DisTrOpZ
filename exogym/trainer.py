@@ -125,7 +125,7 @@ def _worker(rank: int, config: TrainConfig, result_queue: mp.Queue):
 
         bytes_total, bytes_by_op = comm_bytes()
         result_queue.put(
-            (rank, cpu_state_dict, metric, {"bytes": bytes_total, "by_op": bytes_by_op})
+            (rank, metric, {"bytes": bytes_total, "by_op": bytes_by_op})
         )
 
         dist.destroy_process_group()
@@ -233,8 +233,9 @@ class Trainer:
 
         self.port += 1
 
-        manager = mp.Manager()
-        result_queue = manager.Queue()
+        # Use mp.Queue instead of manager.Queue for better stability with spawn
+        ctx = mp.get_context("spawn")
+        result_queue = ctx.Queue()
         mp.spawn(
             _worker,
             args=(self.config, result_queue),
@@ -245,8 +246,9 @@ class Trainer:
         model_states, metrics_list, comm = {}, [], []
         prof_agg = defaultdict(lambda: {"count": 0, "bytes": 0})
         for _ in range(self.config.num_nodes):
-            rank, state_dict, m, c = result_queue.get()
-            model_states[rank] = state_dict
+            # rank, state_dict, m, c = result_queue.get()
+            # model_states[rank] = state_dict
+            rank, m, c = result_queue.get()
             metrics_list.append(m)
             comm.append(c)
             # aggregate profiler comm rows
@@ -255,10 +257,10 @@ class Trainer:
                 if est_bytes is not None:
                     prof_agg[op]["bytes"] += est_bytes
 
-        averaged_state_dict = _average_model_states(model_states)
+        # averaged_state_dict = _average_model_states(model_states)
 
-        final_model = copy.deepcopy(self.model_orig)
-        final_model.load_state_dict(averaged_state_dict)
+        # final_model = copy.deepcopy(self.model_orig)
+        # final_model.load_state_dict(averaged_state_dict)
 
         total_tokens = sum(m["tokens"] for m in metrics_list)
         total_token_loss = sum(m["token_loss"] for m in metrics_list)
@@ -290,7 +292,8 @@ class Trainer:
             "comm_bytes_by_op": by_op_agg,
         }
 
-        return final_model, metrics_out
+        # return final_model, metrics_out
+        return metrics_out
 
     def clear_minibatch_cache(self):
         """Clear the cached minibatch size results."""
