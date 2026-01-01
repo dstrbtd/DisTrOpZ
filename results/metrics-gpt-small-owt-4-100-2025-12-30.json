@@ -1,0 +1,98 @@
+{
+  "benchmark_muloco": {
+    "throughput": 745632,
+    "loss": 6.9574127197265625,
+    "communication": 2120638640,
+    "last_update": "2025-12-30T10:15:33.019652",
+    "score": 0.7775383503425363
+  },
+  "benchmark_muloco_2bit_ef": {
+    "throughput": 786033,
+    "loss": 7.564667224884033,
+    "communication": 1457949104,
+    "last_update": "2025-12-30T10:18:12.702454",
+    "score": 0.7981417480946857
+  },
+  "benchmark_diloco_2bit_ef": {
+    "throughput": 786425,
+    "loss": 8.012276649475098,
+    "communication": 1457949104,
+    "last_update": "2025-12-30T10:20:44.608133",
+    "score": 0.7598187054275514
+  },
+  "benchmark_diloco": {
+    "throughput": 862971,
+    "loss": 8.047820091247559,
+    "communication": 2827518128,
+    "last_update": "2025-12-30T10:23:15.820170",
+    "score": 0.820501830343743
+  },
+  "benchmark_federated_averaging": {
+    "throughput": 896323,
+    "loss": 8.96840763092041,
+    "communication": 13077270704,
+    "last_update": "2025-12-30T10:25:36.072245",
+    "score": 0.49212203715540426
+  },
+  "benchmark_demo": {
+    "throughput": 860001,
+    "loss": 9.67149543762207,
+    "communication": 1706213552,
+    "last_update": "2025-12-30T10:27:50.306215",
+    "score": 0.7076705007381678
+  },
+  "benchmark_sparseloco": {
+    "throughput": 820591,
+    "loss": 9.977664947509766,
+    "communication": 1463486576,
+    "last_update": "2025-12-30T10:30:21.083351",
+    "score": 0.6350316542722528
+  },
+  "5E4dvUNJhKDW9JqsbY1F63xTe18iSr6RYUjZVuFUPdLXDBu5": {
+    "throughput": 787204,
+    "loss": 6.980009078979492,
+    "communication": 1457949104,
+    "last_update": "2025-12-29T10:09:57Z",
+    "score": 0.850462390900825
+  },
+  "5EF88NJHmvDvtf3meYxSUGxnxVdqbAYNfHvFcrA4WfK985N5": {
+    "throughput": 743065,
+    "loss": 8.305970191955566,
+    "communication": 2827518128,
+    "last_update": "2025-12-27T21:03:46Z",
+    "score": 0.6368068031998423
+  },
+  "5DAqZQBQdXUCt4TN6j1yZDJLSKbqqPbBerikJw9bGG351zip": {
+    "throughput": 864801,
+    "loss": 10.797872543334961,
+    "communication": 2827518128,
+    "last_update": "2025-12-28T08:51:47Z",
+    "score": 0.584272164852673
+  },
+  "5EUvybBeymPczokMiwxqLyPNSa5cmQrbJcWYWa5FW1DNxoZD": {
+    "throughput": 648515,
+    "loss": 8.927242279052734,
+    "communication": 1430086832,
+    "last_update": "2025-12-27T21:03:54Z",
+    "score": 0.4956949905480007
+  },
+  "5GHjXRtpP6EPCP9DApmprMdibf5fsvyquN3rhA33V23JiZkt": {
+    "score": NaN
+  },
+  "5F4KB9YJ6n5iaAsQD3ZYMj1vfhPNetyx2hwCP46vs7KxvXMC": {
+    "score": NaN
+  },
+  "5HmGUkajMsMpX6LgcDZbn1wcG48r5xKrHQyzUNM58dsNx9Sn": {
+    "score": NaN
+  },
+  "5H6UKhaQGPLTkXXVfduSD1x9asVFe3R8sxYLC2p82yR19x83": {
+    "score": NaN
+  },
+  "5HTSfSxkNFDh35hcGETgdULZTYZou64Egp2vVxzHy5dWqAsa": {
+    "throughput": 794628,
+    "loss": 8.215188026428223,
+    "communication": 1577840432,
+    "last_update": "2025-12-27T20:47:57Z",
+    "score": 0.7498098632457191
+  }
+}

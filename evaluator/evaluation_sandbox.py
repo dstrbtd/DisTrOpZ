@@ -52,7 +52,8 @@ def main():
     # Miner script is mounted at /sandbox/strategy.py
     # script_path = "/root/DisTrOpZ/evaluator/sandbox/strategy.py"
     # script_path = "/app/sandbox/strategy.py"
-    script_path = "/sandbox/strategy.py"
+    # script_path = "/sandbox/strategy.py"
+    script_path = os.getenv("STRATEGY_PATH", "/sandbox/strategy.py")
     try:
         strategy = script_path
         train_dataset, _ = get_dataset(
@@ -75,7 +76,7 @@ def main():
             num_nodes=NUM_NODES,
             device=DEVICE,
             batch_size=256,
-            minibatch_size=16,
+            minibatch_size=32,
             shuffle=False,
             val_size=256,
             val_interval=10,

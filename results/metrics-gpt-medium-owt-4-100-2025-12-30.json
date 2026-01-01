@@ -1,0 +1,135 @@
+{
+  "benchmark_muloco": {
+    "throughput": 158852,
+    "loss": 6.425784587860107,
+    "communication": 102202933424,
+    "last_update": "2025-12-30T11:43:36.036496",
+    "score": 0.7984874351087026
+  },
+  "benchmark_muloco_2bit_ef": {
+    "throughput": 132258,
+    "loss": 6.714728355407715,
+    "communication": 70264572848,
+    "last_update": "2025-12-30T11:55:39.799592",
+    "score": 0.704206945712321
+  },
+  "benchmark_diloco_2bit_ef": {
+    "throughput": 133791,
+    "loss": 6.371208190917969,
+    "communication": 70264572848,
+    "last_update": "2025-12-30T12:09:55.216074",
+    "score": 0.7376238537715285
+  },
+  "benchmark_diloco": {
+    "throughput": 197247,
+    "loss": 6.354866027832031,
+    "communication": 136270577840,
+    "last_update": "2025-12-30T12:23:54.920753",
+    "score": 0.9132645297419061
+  },
+  "benchmark_federated_averaging": {
+    "throughput": 211052,
+    "loss": 6.7185211181640625,
+    "communication": 630251421872,
+    "last_update": "2025-12-30T12:33:40.882161",
+    "score": 0.6367499943119722
+  },
+  "benchmark_demo": {
+    "throughput": 196153,
+    "loss": 7.308655261993408,
+    "communication": 82202591408,
+    "last_update": "2025-12-30T12:43:05.622517",
+    "score": 0.8631932649498214
+  },
+  "benchmark_sparseloco": {
+    "throughput": 161665,
+    "loss": 6.772711277008057,
+    "communication": 70530810416,
+    "last_update": "2025-12-30T12:53:28.753362",
+    "score": 0.7981974983455795
+  },
+  "5E4dvUNJhKDW9JqsbY1F63xTe18iSr6RYUjZVuFUPdLXDBu5": {
+    "throughput": 134426,
+    "loss": 6.891496181488037,
+    "communication": 70264572848,
+    "last_update": "2025-12-29T10:09:57Z",
+    "score": 0.6969575207712438
+  },
+  "5EF88NJHmvDvtf3meYxSUGxnxVdqbAYNfHvFcrA4WfK985N5": {
+    "throughput": 125971,
+    "loss": 7.3950300216674805,
+    "communication": 136270577840,
+    "last_update": "2025-12-27T21:03:46Z",
+    "score": 0.5879372990004914
+  },
+  "5DAqZQBQdXUCt4TN6j1yZDJLSKbqqPbBerikJw9bGG351zip": {
+    "throughput": 202069,
+    "loss": 10.406732559204102,
+    "communication": 136270577840,
+    "last_update": "2025-12-28T08:51:47Z",
+    "score": 0.5961513218773989
+  },
+  "5EUvybBeymPczokMiwxqLyPNSa5cmQrbJcWYWa5FW1DNxoZD": {
+    "throughput": 149521,
+    "loss": 6.540205478668213,
+    "communication": 69449975472,
+    "last_update": "2025-12-27T21:03:54Z",
+    "score": 0.7771164360294285
+  },
+  "5GHjXRtpP6EPCP9DApmprMdibf5fsvyquN3rhA33V23JiZkt": {
+    "score": NaN
+  },
+  "5F2JCXK9nAdmZsezJrAGVtETUUNoytXuNyUeAgXPV2QXa53S": {
+    "throughput": 111957,
+    "loss": 7.642094135284424,
+    "communication": 71329214768,
+    "last_update": "2025-12-30T11:07:14Z",
+    "score": 0.5589961409991483
+  },
+  "5F4KB9YJ6n5iaAsQD3ZYMj1vfhPNetyx2hwCP46vs7KxvXMC": {
+    "score": NaN
+  },
+  "5HmGUkajMsMpX6LgcDZbn1wcG48r5xKrHQyzUNM58dsNx9Sn": {
+    "score": NaN
+  },
+  "5EUxuooPGXopu8Jb7GVgejNCkkyj7jWoG23DXsA128PhUgTy": {
+    "throughput": 133257,
+    "loss": 7.140990734100342,
+    "communication": 70264572848,
+    "last_update": "2025-12-30T13:34:40Z",
+    "score": 0.6725001955603106
+  },
+  "5H6UKhaQGPLTkXXVfduSD1x9asVFe3R8sxYLC2p82yR19x83": {
+    "score": NaN
+  },
+  "5HTSfSxkNFDh35hcGETgdULZTYZou64Egp2vVxzHy5dWqAsa": {
+    "throughput": 138846,
+    "loss": 7.649838447570801,
+    "communication": 71817054512,
+    "last_update": "2025-12-27T20:47:57Z",
+    "score": 0.6485182103084516
+  },
+  "5H3PtrPVw3eM8bXRiLfrxPmWmhkkd1cuzNtgkphMiQvAuTMP": {
+    "throughput": 174877,
+    "loss": 7.077072620391846,
+    "communication": 68337647792,
+    "last_update": "2025-12-27T21:02:59Z",
+    "score": 0.8189019314236943
+  },
+  "5DiHDkhxU5EzVDQzHrUT5D7aQNtFW3JGjwxKc1h5MvGGAdd5": {
+    "score": NaN
+  },
+  "5HKwMop2Yw9kcN6vdcNoYs4ZvNWLUFb8XAbiJSppC2CzuUmV": {
+    "throughput": 138164,
+    "loss": 6.364742279052734,
+    "communication": 71817054512,
+    "last_update": "2025-12-27T21:02:48Z",
+    "score": 0.7519446237769609
+  },
+  "5Co7pj7GR57kdG7AARLRUpYnLGHkiESPMARq6Y9jfbq1nCJQ": {
+    "score": NaN
+  },
+  "5EbpPtYm2g8gE5jy7VJFT4gasrJpbF1nvZroti4Ne3iJz8E2": {
+    "score": NaN
+  }
+}

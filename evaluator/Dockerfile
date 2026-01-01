@@ -4,6 +4,7 @@
 # =====================================================
 
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+# FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04
 
 # --- Install only minimal deps ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,8 +30,9 @@ COPY evaluator/evaluation_sandbox.py ./evaluation_sandbox.py
 # --- Copy the pre-cache helper script ---
 COPY evaluator/precache_dataset.py ./precache_dataset.py
 
-# 3) editable install
+# 3) Install PyTorch with CUDA first, then editable install
 RUN python3 -m pip install --upgrade pip && \
+    # python3 -m pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu128 && \
     python3 -m pip install --no-cache-dir -e .
 
 # # --- Prepare data directory (dataset will be mounted at runtime) ---
@@ -42,8 +44,8 @@ RUN mkdir -p /sandbox && chmod 755 /sandbox
 # --- Create unprivileged user safely ---
 RUN id -u sandboxuser 2>/dev/null || useradd -m -u 1001 sandboxuser
 
-# --- Create data directory with proper permissions ---
-RUN mkdir -p /app/data && chown -R sandboxuser:sandboxuser /app/data
+# --- Create data and logs directories with proper permissions ---
+RUN mkdir -p /app/data /app/logs && chown -R sandboxuser:sandboxuser /app/data /app/logs
 
 # --- Pre-cache the dataset during build (needs network) ---
 RUN python3 precache_dataset.py && chown -R sandboxuser:sandboxuser /app/data

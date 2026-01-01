@@ -1,0 +1,34 @@
+{
+  "benchmark_muloco": {
+    "throughput": 155738,
+    "loss": 3.5003662109375,
+    "communication": 953894045264,
+    "last_update": "2025-12-30T18:16:09.747234"
+  },
+  "benchmark_muloco_2bit_ef": {
+    "throughput": 131992,
+    "loss": 3.5134170055389404,
+    "communication": 602572078928,
+    "last_update": "2025-12-30T20:09:29.922579"
+  },
+  "benchmark_diloco_2bit_ef": {
+    "throughput": 133215,
+    "loss": 3.689720630645752,
+    "communication": 602572078928,
+    "last_update": "2025-12-30T22:22:49.807943"
+  },
+  "benchmark_diloco": {},
+  "benchmark_federated_averaging": {},
+  "benchmark_demo": {
+    "throughput": 199446,
+    "loss": 4.275022029876709,
+    "communication": 719822980688,
+    "last_update": "2025-12-31T03:26:45.053687"
+  },
+  "benchmark_sparseloco": {
+    "throughput": 160817,
+    "loss": 7.648738384246826,
+    "communication": 605500692176,
+    "last_update": "2025-12-31T04:56:19.164958"
+  }
+}

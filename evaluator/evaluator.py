@@ -47,7 +47,11 @@ def validate_metrics(metrics):
 # Execute untrusted miner gist inside sandbox container
 def run_in_sandbox(gist_path, config, sandbox_logger=None):
     # Install docker on something other than runpod
+    # 2.5 hour timeout (9000 seconds)
     cmd = [
+        "timeout",
+        "--signal=KILL",
+        "9000",
         "docker",
         "run",
         "--rm",
@@ -57,6 +61,8 @@ def run_in_sandbox(gist_path, config, sandbox_logger=None):
         # "--cpus=2",
         # "--memory=4g",
         "--shm-size=64g",
+        "--user",
+        "root",
         # environment variables (each one must be a separate -e)
         "-e",
         f"NUM_NODES={config.number_of_nodes}",
@@ -66,10 +72,17 @@ def run_in_sandbox(gist_path, config, sandbox_logger=None):
         f"DATASET={config.dataset}",
         "-e",
         f"MODEL_SIZE={config.model_size}",
-        # volume mount
+        "-e",
+        "NCCL_P2P_DISABLE=1",
+        "-e",
+        "NCCL_IB_DISABLE=1",
+        "-e",
+        "NCCL_SOCKET_IFNAME=lo",
+        # volume mounts
         "-v",
-        # f"{gist_path}:/app/sandbox/strategy.py:ro",
         f"{gist_path}:/sandbox/strategy.py:ro",
+        # "-v",
+        # "/root/DisTrOpZ/results:/app/results",
         # image name
         SANDBOX_IMAGE,
     ]
@@ -300,37 +313,41 @@ def main():
     metrics = {}
     urls = {}
 
-    # for benchmark in os.listdir("/root/DisTrOpZ/miner/"):
-    #     if benchmark == "miner_base.py" or benchmark == "miner.py" or "sparta" in benchmark:
-    #         continue
+    for benchmark in os.listdir("/root/DisTrOpZ/miner/"):
+        if (
+            benchmark == "miner_base.py"
+            or benchmark == "miner.py"
+            or "sparta" in benchmark
+        ):
+            continue
 
-    #     bt.logging.info(f"🔍 Running benchmark for {benchmark}")
+        bt.logging.info(f"🔍 Running benchmark for {benchmark}")
 
-    #     try:
-    #         gist_url = "benchmark"
-    #         sha = "benchmark"
-    #         hotkey = f"benchmark_{benchmark.split('miner_')[-1].replace('.py','')}"
+        try:
+            gist_url = "benchmark"
+            sha = "benchmark"
+            hotkey = f"benchmark_{benchmark.split('miner_')[-1].replace('.py','')}"
 
-    #         # verify and save
-    #         hotkey_metrics = validate_miner(
-    #             "",
-    #             "",
-    #             "",
-    #             config,
-    #             benchmark=True,
-    #             benchmark_file=benchmark,
-    #             sandbox_logger=sandbox_logger,
-    #         )
+            # verify and save
+            hotkey_metrics = validate_miner(
+                "",
+                "",
+                "",
+                config,
+                benchmark=True,
+                benchmark_file=benchmark,
+                sandbox_logger=sandbox_logger,
+            )
 
-    #         urls[hotkey] = hotkey
-    #         metrics[hotkey] = hotkey_metrics
-    #         bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
+            urls[hotkey] = hotkey
+            metrics[hotkey] = hotkey_metrics
+            bt.logging.success(f"✅ Finished miner {hotkey}: {hotkey_metrics}")
 
-    #         with open(out_path, "w") as f:
-    #             json.dump(metrics, f, indent=2)
+            with open(out_path, "w") as f:
+                json.dump(metrics, f, indent=2)
 
-    #     except Exception as e:
-    #         bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
+        except Exception as e:
+            bt.logging.error(f"⚠️ Error validating {hotkey}: {e}")
 
     while True:
         for uid, hotkey in enumerate(metagraph.hotkeys):
@@ -424,6 +441,7 @@ def main():
             json.dump(metrics, f, indent=2)
         bt.logging.success(f"Saved metrics → {out_path} → {current_block}")
         eval_logger.info(f"Saved metrics to {out_path} at block {current_block}")
+        # breakpoint()
 
 
 if __name__ == "__main__":

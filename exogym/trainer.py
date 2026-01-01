@@ -231,9 +231,8 @@ class Trainer:
 
         self.port += 1
 
-        # Use mp.Queue instead of manager.Queue for better stability with spawn
-        ctx = mp.get_context("spawn")
-        result_queue = ctx.Queue()
+        manager = mp.Manager()
+        result_queue = manager.Queue()
         mp.spawn(
             _worker,
             args=(self.config, result_queue),
