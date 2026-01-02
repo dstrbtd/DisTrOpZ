@@ -10,7 +10,10 @@ import gc
 import torch
 import time
 import logging
+from dotenv import load_dotenv
 from logger import setup_loki_logging, add_sandbox_handler
+
+load_dotenv()
 
 # Config
 SANDBOX_IMAGE = "distropz_sandbox"
@@ -185,7 +188,30 @@ def validate_miner(
         gist_id = match.group(1)
         # breakpoint()
         api_url = f"https://api.github.com/gists/{gist_id}"
-        resp = requests.get(api_url)
+
+        # Use GitHub token if available to avoid rate limiting (60/hr unauthenticated vs 5000/hr authenticated)
+        headers = {}
+        github_token = os.environ.get("GITHUB_TOKEN")
+        if github_token:
+            headers["Authorization"] = f"token {github_token}"
+
+        resp = requests.get(api_url, headers=headers)
+
+        # Handle rate limiting with retry
+        if resp.status_code == 403 and "rate limit" in resp.text.lower():
+            reset_time = resp.headers.get("X-RateLimit-Reset")
+            if reset_time:
+                wait_seconds = int(reset_time) - int(time.time()) + 5
+                bt.logging.warning(
+                    f"Rate limited. Waiting {wait_seconds}s until reset..."
+                )
+                time.sleep(max(wait_seconds, 60))
+                resp = requests.get(api_url, headers=headers)
+            else:
+                bt.logging.warning("Rate limited. Waiting 60s before retry...")
+                time.sleep(60)
+                resp = requests.get(api_url, headers=headers)
+
         last_updated_at = resp.json().get("updated_at")
         time.sleep(15)
 
