@@ -92,7 +92,7 @@ def setup_loki_logging(config=None, component="evaluator"):
     # Create dedicated evaluator logger (bt.logging bypasses root logger)
     evaluator_logger = logging.getLogger("evaluator_output")
     evaluator_logger.setLevel(logging.DEBUG)
-    evaluator_logger.propagate = False  # Don't propagate to root to avoid duplicates
+    evaluator_logger.propagate = True  # Don't propagate to root to avoid duplicates
 
     # Loki handler with extra labels
     loki_handler = LokiHandler(
@@ -125,6 +125,12 @@ def setup_loki_logging(config=None, component="evaluator"):
     queue_handler = QueueHandler(log_queue)
     evaluator_logger.addHandler(queue_handler)
 
+    # Setup handler for terminal output
+    terminal = logging.StreamHandler()
+    terminal.setLevel(logging.INFO)  # or DEBUG
+    terminal.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    evaluator_logger.addHandler(terminal)
+
     listener = QueueListener(log_queue, loki_handler)
     listener.start()
 
@@ -143,7 +149,7 @@ def add_sandbox_handler(config=None):
     """
     sandbox_logger = logging.getLogger("sandbox_output")
     sandbox_logger.setLevel(logging.INFO)
-    sandbox_logger.propagate = False  # Don't propagate to root to avoid duplicates
+    sandbox_logger.propagate = True  # Don't propagate to root to avoid duplicates
 
     # Create separate handler for sandbox with sandbox component tag
     sandbox_loki_handler = LokiHandler(
@@ -175,6 +181,12 @@ def add_sandbox_handler(config=None):
     log_queue = Queue(-1)
     queue_handler = QueueHandler(log_queue)
     sandbox_logger.addHandler(queue_handler)
+
+    # Setup handler for terminal output
+    terminal = logging.StreamHandler()
+    terminal.setLevel(logging.INFO)  # or DEBUG
+    terminal.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    sandbox_logger.addHandler(terminal)
 
     listener = QueueListener(log_queue, sandbox_loki_handler)
     listener.start()
